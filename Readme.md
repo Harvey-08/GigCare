@@ -1,5 +1,4 @@
 # GigCare: Impact-Verified Parametric Insurance for Gig Delivery Workers
-### Phase 1 Design Document — Deadline: March 20, 2026
 
 ---
 
@@ -17,21 +16,15 @@ Key design pillars:
 
 **Market context:** India's gig economy employs approximately 12 million workers (Economic Survey 2025–26), with roughly 40% earning under ₹15,000/month — highly exposed to income shocks from weather and social disruptions yet largely uninsured.
 
-> **Scope:** Phase 1 deliverables are design and logic only — no production code. All content is derived from the provided problem statement and public domain sources.
-
 ---
 
 ## 1. Personas & Target Market
 
 ### 1.1 Persona A — Urban Food Delivery Worker
 
-**Priya**, a Zomato partner in Mumbai, works 6 days/week across 8–10 hour shifts completing approximately 25 orders/day (baseline earnings ~₹5,000/week, ~₹21,000/month). During monsoon season she frequently goes offline for safety, losing 20–30% of weekly income with no compensation. GigCare provides her a weekly plan that automatically triggers a payout when rainfall halts her zone's delivery activity.
+**Person X**, a Zomato partner in Mumbai, works 6 days/week across 8–10 hour shifts completing approximately 25 orders/day (baseline earnings ~₹5,000/week, ~₹21,000/month). During monsoon season he/she frequently goes offline for safety, losing 20–30% of weekly income with no compensation. GigCare provides her a weekly plan that automatically triggers a payout when rainfall halts his/her zone's delivery activity.
 
-### 1.2 Persona B — E-Commerce Delivery Rider
-
-**Ravi**, an Amazon delivery rider in Delhi, bikes through severe pollution waves (AQI > 400) that regularly force him off the road. When compelled to stop, he claims a payout through the app without having to submit manual paperwork or wait for an adjuster.
-
-### 1.3 General Workflow
+### 1.2 General Workflow
 
 1. Worker downloads the mobile app and registers via phone/ID verification
 2. Worker purchases a weekly insurance plan (paid via UPI/QR code)
@@ -47,12 +40,12 @@ Key design pillars:
 
 Traditional parametric insurance pays out on environmental thresholds alone (e.g., rain ≥ 50 mm → fixed payout). GigCare adds an **economic impact layer**: a weather trigger must be accompanied by a measurable drop in platform delivery volume before a payout is validated. This eliminates false positives that inflate loss ratios and erode premium competitiveness.
 
-| Approach | Traditional Parametric | GigCare Impact-Verified |
-|---|---|---|
-| Trigger basis | Weather threshold only | Weather threshold + delivery volume drop |
-| False positive risk | High | Low |
-| Payout accuracy | Approximate | Economically validated |
-| Zone granularity | City-level | 1 km² micro-zones |
+| Approach             | Traditional Parametric        | GigCare Impact-Verified                  |
+|----------------------|-------------------------------|------------------------------------------|
+| Trigger basis        | Weather threshold only        | Weather threshold + delivery volume drop |
+| False positive risk  | High                          | Low                                      |
+| Payout accuracy      | Approximate                   | Economically validated                   |
+| Zone granularity     | City-level                    | 1 km² micro-zones                        |
 
 **Core payout logic:**
 
@@ -63,13 +56,13 @@ IF weather_trigger AND delivery_drop > 40% AND trust_score > 0.85:
 
 ### 2.2 Trigger Thresholds
 
-| Trigger | Threshold | Impact Validation | Source |
-|---|---|---|---|
-| **Heavy Rain** | ≥ 50 mm / 24 h | Platform orders drop > 40% | IMD (conservative vs. 64.5 mm "heavy") |
-| **Heat Wave** | Max temp ≥ 40°C | Rider absence > 25% OR orders drop | IMD plains heat wave criteria |
-| **Air Quality** | AQI ≥ 300 | Order cancellations > 30% | CPCB "Very Poor" category |
-| **Curfew / Strike** | Official government notice | Platform-wide orders drop > 50% | Government notification feeds |
-| **App / Network Outage** | Worker online, no assignments > 30 min | Orders drop > 70% in zone | Platform API signal |
+| Trigger                    | Threshold                              | Impact Validation                            | Source                                  |
+|----------------------------|----------------------------------------|----------------------------------------------|-----------------------------------------|
+| **Heavy Rain**             | ≥ 50 mm / 24 h                         | Platform orders drop > 40%                   | IMD (conservative vs. 64.5 mm "heavy") |
+| **Heat Wave**              | Max temp ≥ 40°C                        | Rider absence > 25% OR orders drop           | IMD plains heat wave criteria           |
+| **Air Quality**            | AQI ≥ 300                              | Order cancellations > 30%                    | CPCB "Very Poor" category               |
+| **Curfew / Strike**        | Official government notice             | Platform-wide orders drop > 50%              | Government notification feeds           |
+| **App / Network Outage**   | Worker online, no assignments > 30 min | Orders drop > 70% in zone                   | Platform API signal                     |
 
 **Impact validation sources:**
 
@@ -90,12 +83,12 @@ Payout = min(MaxCoverage, avg_daily_income × disruption_hours × severity_facto
 
 **Context-aware examples:**
 
-| Scenario | Estimated Payout |
-|---|---|
-| Light rain, 2 hours, lunch shift | ₹50 |
-| Heavy rain, 6 hours, dinner peak | ₹200 |
-| Heat wave, full day | ₹350 |
-| Multi-trigger event (heat + AQI) | Single payout, elevated severity factor |
+| Scenario                                  | Estimated Payout |
+|-------------------------------------------|------------------|
+| Light rain, 2 hours, lunch shift          | ₹50              |
+| Heavy rain, 6 hours, dinner peak          | ₹200             |
+| Heat wave, full day                       | ₹350             |
+| Multi-trigger event (heat + AQI)          | Single payout, elevated severity factor |
 
 When multiple triggers fire simultaneously, a **single payout** is issued (no stacking), but the severity factor is elevated and the event is flagged for reserve adjustment.
 
@@ -111,10 +104,10 @@ Bengaluru (and future cities) are divided into **1 km × 1 km grid zones**. Each
 Zone Risk Score = f(rain_history, claim_density, rider_density, flood_prone_classification)
 ```
 
-| Zone | Flood Risk | Zone Risk Score | Weekly Premium |
-|---|---|---|---|
-| Koramangala (low flood) | Low | 0.8 | ₹100 |
-| Whitefield lowlands | High | 1.5 | ₹150 |
+| Zone                     | Flood Risk | Zone Risk Score | Weekly Premium |
+|--------------------------|------------|-----------------|----------------|
+| Koramangala (low flood)  | Low        | 0.8             | ₹100           |
+| Whitefield lowlands      | High       | 1.5             | ₹150           |
 
 ### 3.2 Dynamic Premium Pricing Formula
 
@@ -142,20 +135,20 @@ Whitefield, new rider (higher uncertainty)        → ₹180/week
 
 ### 3.3 Reserve Sizing & Loss Ratio
 
-| Metric | Target |
-|---|---|
-| Reserve buffer | 150% of expected weekly claims |
-| Loss Ratio | < 65% (industry standard) |
-| Catastrophic reinsurance | Treaty-based, activated above reserve capacity |
+| Metric                    | Target                                              |
+|---------------------------|-----------------------------------------------------|
+| Reserve buffer            | 150% of expected weekly claims                      |
+| Loss Ratio                | < 65% (industry standard)                           |
+| Catastrophic reinsurance  | Treaty-based, activated above reserve capacity      |
 
 If expected weekly claims = ₹1,000, the reserve is maintained at ₹1,500. A further 10–20% buffer above statutory reserves is held from retained earnings to ensure rapid payouts. Excess claims draw on the reinsurance treaty.
 
 ### 3.4 Payer Model
 
-| Payer | Share | Example (₹150 premium) |
-|---|---|---|
-| Worker | 80% | ₹120 |
-| Platform subsidy | 20% | ₹30 |
+| Payer             | Share | Example (₹150 premium) |
+|-------------------|-------|------------------------|
+| Worker            | 80%   | ₹120                   |
+| Platform subsidy  | 20%   | ₹30                    |
 
 Premiums fund a **segregated reserve pool** held by the insurer, managed through weekly premium inflows and investment earnings on the pool.
 
@@ -179,7 +172,7 @@ Register → ID/phone verification → Profile (zone, bike type, hours)
 
 ### 4.3 System Architecture
 
-```
+```mermaid
 flowchart TD
     A[IMD / CPCB APIs] --> B[Impact-Verified Trigger Engine]
     C[Platform Order API] --> B
@@ -196,21 +189,21 @@ flowchart TD
     H -->|Clean| J
 
     J --> K[Manual Review ~2% of claims]
-    G --> L[Claim Closed ✅]
+    G --> L[Claim Closed]
     K --> L
 ```
 
 ### 4.4 Tech Stack
 
-| Layer | Technology |
-|---|---|
-| **Mobile App** | React Native (Android + iOS) |
-| **Admin Web Portal** | React.js |
-| **Backend API** | Node.js (Express) or Python (Flask) — hosted on AWS/Azure |
-| **Database** | MongoDB or PostgreSQL (policies, claims, location signals) |
-| **ML / Modeling** | Python — scikit-learn, TensorFlow/PyTorch; job scheduling via Airflow or cron |
-| **External APIs** | IMD (weather), CPCB (AQI), Google Maps (geocoding), Razorpay (premium collection) |
-| **DevOps** | Docker, GitHub CI/CD, AWS S3 (static assets), CloudWatch (logging & monitoring) |
+| Layer               | Technology                                                                                    |
+|---------------------|-----------------------------------------------------------------------------------------------|
+| **Mobile App**      | React Native (Android + iOS)                                                                  |
+| **Admin Web Portal**| React.js                                                                                      |
+| **Backend API**     | Node.js (Express) or Python (Flask) — hosted on AWS/Azure                                    |
+| **Database**        | MongoDB or PostgreSQL (policies, claims, location signals)                                    |
+| **ML / Modeling**   | Python — scikit-learn, TensorFlow/PyTorch; job scheduling via Airflow or cron                |
+| **External APIs**   | IMD (weather), CPCB (AQI), Google Maps (geocoding), Razorpay (premium collection)            |
+| **DevOps**          | Docker, GitHub CI/CD, AWS S3 (static assets), CloudWatch (logging & monitoring)              |
 
 ---
 
@@ -244,17 +237,17 @@ The primary adversarial scenario is a **coordinated fraud ring** of ~500 deliver
 
 Every claim submission captures the following signals from the worker's device:
 
-| Signal | Anti-Spoof Strength | Key Limitation |
-|---|---|---|
-| **GPS** | Precise coordinates | Spoofable via apps or jammers |
-| **Cell Tower IDs** | Hard to fake at scale; broad area | Low precision; requires telecom DB |
-| **Wi-Fi SSIDs** | Accurate indoor/outdoor reference | Only available where hotspots exist |
-| **Bluetooth Beacons** | Short-range location confirmation | Requires pre-deployed beacons |
-| **IP Address / Timezone** | Confirms general region and time consistency | VPNs or manual changes can mask truth |
-| **Accelerometer** | Detects real physical movement | Noise; may miss slow movement |
-| **Gyroscope** | Orientation and direction of travel | Requires calibration |
-| **Magnetometer** | Compass heading cross-check | Disturbed by metal objects; coarse |
-| **Device Fingerprint** | Ties sessions and devices together | Privacy-sensitive; spoofable on rooted devices |
+| Signal                  | Anti-Spoof Strength                              | Key Limitation                                     |
+|-------------------------|--------------------------------------------------|----------------------------------------------------|
+| **GPS**                 | Precise coordinates                              | Spoofable via apps or jammers                      |
+| **Cell Tower IDs**      | Hard to fake at scale; broad area                | Low precision; requires telecom DB                 |
+| **Wi-Fi SSIDs**         | Accurate indoor/outdoor reference                | Only available where hotspots exist                |
+| **Bluetooth Beacons**   | Short-range location confirmation                | Requires pre-deployed beacons                      |
+| **IP Address / Timezone** | Confirms general region and time consistency   | VPNs or manual changes can mask truth              |
+| **Accelerometer**       | Detects real physical movement                   | Noise; may miss slow movement                      |
+| **Gyroscope**           | Orientation and direction of travel              | Requires calibration                               |
+| **Magnetometer**        | Compass heading cross-check                      | Disturbed by metal objects; coarse                 |
+| **Device Fingerprint**  | Ties sessions and devices together               | Privacy-sensitive; spoofable on rooted devices     |
 
 ### 6.3 Continuous Trust Score
 
@@ -269,11 +262,11 @@ trust_score = 1.0 − fraud_probability(
 )
 ```
 
-| Trust Score | Action | Estimated Volume |
-|---|---|---|
-| > 0.90 | Instant UPI payout | ~92% of claims |
-| 0.60 – 0.90 | 50% partial payout + selfie verification | ~5% of claims |
-| < 0.60 | Manual review | ~3% of claims |
+| Trust Score     | Action                                       | Estimated Volume   |
+|-----------------|----------------------------------------------|--------------------|
+| > 0.90          | Instant UPI payout                           | ~92% of claims     |
+| 0.60 – 0.90     | 50% partial payout + selfie verification     | ~5% of claims      |
+| < 0.60          | Manual review                                | ~3% of claims      |
 
 ### 6.4 ML Architecture
 
@@ -285,18 +278,18 @@ The fraud detection engine combines **supervised classification** and **anomaly 
 
 #### Feature Engineering
 
-| Category | Feature | Description |
-|---|---|---|
-| **Location Consistency** | GPS–Cell/Wi-Fi offset | Distance (km) between GPS and network-based location fix |
-| | Jump distance / time | Implied speed (km/h) between consecutive GPS points |
-| **Sensor Coherence** | Motion vs. reported speed | Accelerometer magnitude compared to GPS speed |
-| **Network / Geo** | IP–GPS discrepancy | Boolean: IP geolocation matches GPS location? |
-| | Timezone mismatch | Boolean: device timezone matches GPS region? |
-| **Device Context** | Shared device count | Number of user accounts linked to one device fingerprint |
-| | Rooted / emulator flag | Boolean: device is rooted or running in emulator? |
-| | Fingerprint entropy | Uniqueness measure of device/app instance |
-| **Group / Temporal** | Claim cluster density | Claims within 1 km radius / 10-minute window |
-| | Multi-account switch | Distinct devices per user in a 24-hour window |
+| Category               | Feature                    | Description                                                          |
+|------------------------|----------------------------|----------------------------------------------------------------------|
+| **Location Consistency** | GPS–Cell/Wi-Fi offset    | Distance (km) between GPS and network-based location fix             |
+|                        | Jump distance / time       | Implied speed (km/h) between consecutive GPS points                  |
+| **Sensor Coherence**   | Motion vs. reported speed  | Accelerometer magnitude compared to GPS speed                        |
+| **Network / Geo**      | IP–GPS discrepancy         | Boolean: IP geolocation matches GPS location?                        |
+|                        | Timezone mismatch          | Boolean: device timezone matches GPS region?                         |
+| **Device Context**     | Shared device count        | Number of user accounts linked to one device fingerprint             |
+|                        | Rooted / emulator flag     | Boolean: device is rooted or running in emulator?                    |
+|                        | Fingerprint entropy        | Uniqueness measure of device/app instance                            |
+| **Group / Temporal**   | Claim cluster density      | Claims within 1 km radius / 10-minute window                         |
+|                        | Multi-account switch       | Distinct devices per user in a 24-hour window                        |
 
 ### 6.5 Fraud Ring Detection
 
@@ -315,15 +308,15 @@ Temporal spikes (e.g., 100+ claims in the same zone within minutes) also trigger
 
 Hard-block rules execute before the ML layer for minimum-latency detection:
 
-| Rule | Condition | Action |
-|---|---|---|
-| Teleport Check | Implied speed > 150 km/h between GPS points | Block claim |
-| Sensor Mismatch | No accelerometer activity + significant GPS movement | Block claim |
-| IP / Timezone Check | IP country or timezone differs from GPS location | Flag for review |
-| Wi-Fi / Cell Triangulation | GPS location falls outside radius of known nearby signals | Flag for review |
-| Simultaneous Cluster | Same GPS coordinates across multiple claims in same window | Block cluster |
-| Multi-Account Device | 5+ accounts associated with same device fingerprint | Block accounts |
-| Replay Protection | Stale or reused timestamp on sensor data | Reject claim |
+| Rule                        | Condition                                                       | Action              |
+|-----------------------------|-----------------------------------------------------------------|---------------------|
+| Teleport Check              | Implied speed > 150 km/h between GPS points                    | Block claim         |
+| Sensor Mismatch             | No accelerometer activity + significant GPS movement            | Block claim         |
+| IP / Timezone Check         | IP country or timezone differs from GPS location                | Flag for review     |
+| Wi-Fi / Cell Triangulation  | GPS location falls outside radius of known nearby signals       | Flag for review     |
+| Simultaneous Cluster        | Same GPS coordinates across multiple claims in same window      | Block cluster       |
+| Multi-Account Device        | 5+ accounts associated with same device fingerprint             | Block accounts      |
+| Replay Protection           | Stale or reused timestamp on sensor data                        | Reject claim        |
 
 ### 6.7 Explainable AI
 
@@ -338,10 +331,10 @@ Every flagged claim produces a human-readable explanation to support worker appe
 
 ### 6.8 Claims Flow
 
-```
+```mermaid
 flowchart LR
     Claim[Claim Submitted] --> Verify[Multi-Signal Analysis + Trust Score]
-    Verify -->|Trust > 0.85| AutoPay[Instant UPI Payout ✅]
+    Verify -->|Trust > 0.85| AutoPay[Instant UPI Payout]
     Verify -->|Trust 0.6–0.85| Flagged[Partial Payout + Verification Request]
     Verify -->|Trust < 0.6| GraphCheck[Fraud Graph Analysis]
 
@@ -355,7 +348,7 @@ flowchart LR
     ManualCheck -->|Genuine| FullPay[Full Remaining Payout]
     ManualCheck -->|Fraud| Deny
 
-    FullPay --> Done[Claim Closed ✅]
+    FullPay --> Done[Claim Closed]
     AutoPay --> Done
     Deny --> Done
 ```
@@ -375,7 +368,7 @@ flowchart LR
 
 ### 7.1 Entity Relationship Diagram
 
-```
+```mermaid
 erDiagram
     WORKER ||--o{ POLICY : purchases
     WORKER ||--o{ CLAIM : files
@@ -387,40 +380,40 @@ erDiagram
 
 ### 7.2 Key Entities
 
-| Entity | Key Attributes |
-|---|---|
-| **Worker** | worker_id, name, zone_id, bike_type, avg_daily_income, trust_score |
-| **Policy** | policy_id, worker_id, week_start, premium_paid, max_coverage |
-| **Claim** | claim_id, worker_id, policy_id, trigger_type, trigger_value, payout_amount, status |
-| **LocationSignal** | signal_id, claim_id, device_id, gps_lat, gps_lon, cell_towers, wifi_ssids, accelerometer_mag, timestamp |
-| **Device** | device_id, worker_id, fingerprint_hash, rooted_flag, shared_account_count |
-| **FraudGraph** | node_id, node_type (user / device / IP), edges (shared_signal_type) |
+| Entity              | Key Attributes                                                                              |
+|---------------------|---------------------------------------------------------------------------------------------|
+| **Worker**          | worker_id, name, zone_id, bike_type, avg_daily_income, trust_score                         |
+| **Policy**          | policy_id, worker_id, week_start, premium_paid, max_coverage                               |
+| **Claim**           | claim_id, worker_id, policy_id, trigger_type, trigger_value, payout_amount, status         |
+| **LocationSignal**  | signal_id, claim_id, device_id, gps_lat, gps_lon, cell_towers, wifi_ssids, accelerometer_mag, timestamp |
+| **Device**          | device_id, worker_id, fingerprint_hash, rooted_flag, shared_account_count                  |
+| **FraudGraph**      | node_id, node_type (user / device / IP), edges (shared_signal_type)                        |
 
 ### 7.3 Key API Endpoints
 
-| Endpoint | Method | Description |
-|---|---|---|
-| `/submit_claim` | POST | Worker submits a new claim with sensor payload |
-| `/payment/notify` | POST | Razorpay webhook for premium payment confirmation |
-| `/verify_step` | POST | Worker submits verification media (selfie/video) |
-| `/claim/status` | GET | Worker retrieves current claim status and payout |
-| `/admin/fraud_alerts` | GET | Admin retrieves active fraud ring alerts |
+| Endpoint              | Method | Description                                                  |
+|-----------------------|--------|--------------------------------------------------------------|
+| `/submit_claim`       | POST   | Worker submits a new claim with sensor payload               |
+| `/payment/notify`     | POST   | Razorpay webhook for premium payment confirmation            |
+| `/verify_step`        | POST   | Worker submits verification media (selfie/video)             |
+| `/claim/status`       | GET    | Worker retrieves current claim status and payout             |
+| `/admin/fraud_alerts` | GET    | Admin retrieves active fraud ring alerts                     |
 
 ---
 
 ## 8. Implementation Roadmap
 
-### Phase 1 — Design & Logic (Mar 4–20, 2026) ✅
+### Phase 1 — Design & Logic (Mar 4–20, 2026) 
 
-| Deliverable | Description |
-|---|---|
-| README / Idea Document | This document — full system design |
-| `data_schema.sql` | ER diagram with complete table definitions |
-| `api_contracts.json` | OpenAPI spec for all endpoints |
-| `mock_data_generator.py` | Synthetic normal and spoofed signal datasets |
-| `trigger_logic_tests.py` | Unit tests for premium calculation, trigger logic, and fraud rules |
-| `fraud_simulation.html` | Interactive demo of trust score and fraud detection logic |
-| Dashboard mockups | Admin UI screenshots — active claims, fraud alerts, payout charts |
+| Deliverable               | Description                                                                          |
+|---------------------------|--------------------------------------------------------------------------------------|
+| README / Idea Document    | This document — full system design                                                   |
+| `data_schema.sql`         | ER diagram with complete table definitions                                           |
+| `api_contracts.json`      | OpenAPI spec for all endpoints                                                       |
+| `mock_data_generator.py`  | Synthetic normal and spoofed signal datasets                                         |
+| `trigger_logic_tests.py`  | Unit tests for premium calculation, trigger logic, and fraud rules                   |
+| `fraud_simulation.html`   | Interactive demo of trust score and fraud detection logic                            |
+| Dashboard mockups         | Admin UI screenshots — active claims, fraud alerts, payout charts                   |
 
 ### Phase 2 — Core Build (Mar 21–Apr 4, 2026)
 
@@ -446,13 +439,13 @@ erDiagram
 
 ## 9. Evaluation Targets
 
-| Metric | Target | Notes |
-|---|---|---|
-| False Positive Rate | < 1% | Honest workers rarely flagged |
-| Fraud Recall | > 95% | Catch nearly all spoof attempts, including coordinated rings |
-| Detection Latency | < 10 seconds | Real-time processing after claim submission |
-| Loss Ratio | < 65% | Industry standard for sustainable parametric insurance |
-| Instant Payout Rate | ~92% of claims | Trust score > 0.90 |
+| Metric                | Target              | Notes                                              |
+|-----------------------|---------------------|----------------------------------------------------|
+| False Positive Rate   | < 1%                | Honest workers rarely flagged                      |
+| Fraud Recall          | > 95%               | Catch nearly all spoof attempts, including rings   |
+| Detection Latency     | < 10 seconds        | Real-time processing after claim submission        |
+| Loss Ratio            | < 65%               | Industry standard for sustainable parametric model |
+| Instant Payout Rate   | ~92% of claims      | Trust score > 0.90                                 |
 
 All targets are provisional for Phase 1. They will be validated through controlled simulation in Phase 2 and against real pilot data in Phase 3, with model parameters adjusted accordingly.
 
@@ -471,17 +464,15 @@ All targets are provisional for Phase 1. They will be validated through controll
 
 ## 11. Authoritative Sources
 
-| Source | Relevance |
-|---|---|
-| **Economic Survey 2025–26 (India)** | ~12 million gig workers; ~40% earn < ₹15,000/month — market sizing and vulnerability baseline |
-| **IMD (India Meteorological Department)** | Heat wave criteria (≥ 40°C for plains), rainfall classification thresholds |
-| **CPCB (Central Pollution Control Board)** | National AQI scale; "Very Poor" defined as > 300 |
-| **Bajaj Allianz ClimateSafe** *(Reuters, Apr 2025)* | First Indian parametric insurance product targeting gig workers |
-| **Digit Insurance + KMD AQI Policy** *(Economic Times, Feb 2025)* | Pilot parametric cover for construction workers in Delhi; AQI trigger precedent |
-| **Oligeri et al., *Computer Networks* (2022)** | GPS spoof detection via crowd-sourced Wi-Fi/cell data; ~0.01 FPR, ~6 s detection latency — basis for evaluation targets |
-| **SenseAI Geolocation Whitepaper** | Industry guidance on multi-sensor anti-spoofing and fraud-ring clustering |
-| **InsTech / Parametric Post (2023)** | Highlights absence of income insurance for gig workers; market gap validation |
+| Source                                                   | Relevance                                                                                                   |
+|----------------------------------------------------------|-------------------------------------------------------------------------------------------------------------|
+| **Economic Survey 2025–26 (India)**                      | ~12 million gig workers; ~40% earn < ₹15,000/month — market sizing and vulnerability baseline              |
+| **IMD (India Meteorological Department)**                | Heat wave criteria (≥ 40°C for plains), rainfall classification thresholds                                  |
+| **CPCB (Central Pollution Control Board)**               | National AQI scale; "Very Poor" defined as > 300                                                            |
+| **Bajaj Allianz ClimateSafe** *(Reuters, Apr 2025)*      | First Indian parametric insurance product targeting gig workers                                             |
+| **Digit Insurance + KMD AQI Policy** *(ET, Feb 2025)*   | Pilot parametric cover for construction workers in Delhi; AQI trigger precedent                             |
+| **Oligeri et al., *Computer Networks* (2022)**           | GPS spoof detection via crowd-sourced Wi-Fi/cell data; ~0.01 FPR, ~6 s latency — basis for eval targets   |
+| **SenseAI Geolocation Whitepaper**                       | Industry guidance on multi-sensor anti-spoofing and fraud-ring clustering                                   |
+| **InsTech / Parametric Post (2023)**                     | Highlights absence of income insurance for gig workers; market gap validation                               |
 
 ---
-
-*GigCare — Phase 1 Design Document | Deadline: March 20, 2026*
