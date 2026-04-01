@@ -15,7 +15,6 @@ Automatic, weather-triggered micro-insurance for India's gig delivery workers. R
 ✅ **Responsive PWA**: Works on any browser (tested on Chrome, Firefox, Safari)
 
 ### Key Metrics
-- **72-hour build**: Complete system built from database to UI
 - **3-tier coverage**: SEED (₹80), STANDARD (₹162), PREMIUM (₹220)
 - **5 operational zones**: Koramangala, Whitefield, Indiranagar, HSR Layout, Bommanahalli
 - **3 trigger types**: Heavy Rain (≥50mm), Extreme Heat (≥40°C), Poor AQI (≥300)
@@ -79,25 +78,74 @@ Automatic, weather-triggered micro-insurance for India's gig delivery workers. R
 
 ### Prerequisites
 - Docker & Docker Compose
-- Node.js v20+
-- Python 3.11+
+- Node.js v20+ (optional - for local development)
+- Python 3.11+ (optional - for local development)
 - Git
 
-### 1. Setup Environment
+### 1. Clone & Start (3 Commands)
 
 ```bash
-# Clone repo and enter directory
-git clone <repo>
+# Clone the repository
+git clone https://github.com/Harvey-08/GigCare.git
 cd gigcare_phase2_build
 
-# Copy environment template
+# Start everything (database, API, ML, React apps)
+./start.sh
+```
+
+**That's it!** The app will be running at:
+- **Worker App**: http://localhost:3000
+- **Admin App**: http://localhost:3002
+- **API Server**: http://localhost:3001
+
+### 2. Demo Credentials
+
+**Worker Login:**
+- Phone: `+919876543210`
+- OTP: `123456`
+
+**Admin Login:**
+- Phone: `9876543210`
+- OTP: `123456`
+
+### 3. Manual Setup (Alternative)
+
+If you prefer manual control:
+
+```bash
+# Clone repo
+git clone https://github.com/Harvey-08/GigCare.git
+cd gigcare_phase2_build
+
+# Copy environment (optional - defaults work for demo)
 cp .env.example .env
 
-# Fill in missing values:
-# - RAZORPAY_KEY_ID and RAZORPAY_KEY_SECRET (get from sandbox)
-# - OPENWEATHER_API_KEY (free tier from openweathermap.org)
-# - WAQI_TOKEN (free tier from waqi.info)
-# - JWT_SECRET (keep as-is for demo)
+# Start services
+docker-compose up -d
+
+# Check status
+docker-compose ps
+```
+
+### 4. Development Mode
+
+For local development (requires Node.js & Python):
+
+```bash
+# Start only database
+docker-compose up -d postgres
+
+# Install dependencies
+cd services/api && npm install
+cd ../ml/premium_service && pip install -r requirements.txt
+cd ../../apps/worker && npm install
+cd ../admin && npm install
+
+# Start services locally
+cd services/api && npm start
+cd ../ml/premium_service && python app.py
+cd ../../apps/worker && npm start
+cd ../admin && npm start
 ```
 
 ### 2. Start All Services
