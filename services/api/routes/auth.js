@@ -148,6 +148,12 @@ router.get('/me', authMiddleware('WORKER'), async (req, res) => {
       data: worker,
       meta: { timestamp: new Date().toISOString() },
     });
+  } catch (err) {
+    console.error('Worker profile fetch error:', err);
+    res.status(500).json({
+      error: 'Failed to fetch worker profile',
+      code: 'WORKER_PROFILE_FETCH_FAILED',
+    });
   }
 });
 

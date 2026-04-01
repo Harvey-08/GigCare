@@ -84,10 +84,3 @@ VALUES
 INSERT INTO admins (admin_id, email, name, phone, role, permissions, is_active)
 VALUES
   ('admin-001', 'admin@gigcare.com', 'Admin User', '9876543210', 'ADMIN', ARRAY['read', 'write', 'admin'], TRUE);
-
--- =====================================================
--- ADMINS (for admin dashboard)
--- =====================================================
-INSERT INTO admins (admin_id, email, name, phone, role, permissions, is_active)
-VALUES
-  ('admin-001', 'admin@gigcare.com', 'Admin User', '9876543210', 'ADMIN', ARRAY['read', 'write', 'admin'], TRUE);
