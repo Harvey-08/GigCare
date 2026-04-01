@@ -137,7 +137,24 @@ CREATE TABLE location_signals (
   timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
+-- =====================================================
+-- ADMIN TABLES
+-- =====================================================
 
+CREATE TABLE admins (
+  admin_id VARCHAR(100) PRIMARY KEY,
+  email VARCHAR(255) NOT NULL UNIQUE,
+  name VARCHAR(255) NOT NULL,
+  phone VARCHAR(20) NOT NULL UNIQUE,
+  role VARCHAR(50) DEFAULT 'ADMIN',
+  permissions TEXT[] DEFAULT ARRAY['read', 'write', 'admin'],
+  is_active BOOLEAN DEFAULT TRUE,
+  last_login TIMESTAMP,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+-- =====================================================
+-- INDEXES
 -- =====================================================
 -- INDEXES
 -- =====================================================

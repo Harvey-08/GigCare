@@ -149,10 +149,100 @@ router.get('/me', authMiddleware('WORKER'), async (req, res) => {
       meta: { timestamp: new Date().toISOString() },
     });
   } catch (err) {
-    console.error('Profile fetch error:', err);
+    console.error('Worker profile fetch error:', err);
     res.status(500).json({
-      error: 'Failed to fetch profile',
-      code: 'PROFILE_FETCH_FAILED',
+      error: 'Failed to fetch worker profile',
+      code: 'WORKER_PROFILE_FETCH_FAILED',
+    });
+  }
+});
+
+// =====================================================
+// POST /api/auth/admin-login
+// Admin login with phone/OTP (OTP hardcoded as 123456 for demo)
+// =====================================================
+router.post('/admin-login', async (req, res) => {
+  try {
+    const { phone, otp } = req.body;
+
+    // Validate input
+    if (!phone || !otp) {
+      return res.status(422).json({
+        error: 'Missing required fields: phone, otp',
+        code: 'MISSING_FIELDS',
+      });
+    }
+
+    // Demo OTP validation (in production, use proper OTP service)
+    if (otp !== '123456') {
+      return res.status(401).json({
+        error: 'Invalid OTP',
+        code: 'INVALID_OTP',
+      });
+    }
+
+    // Find admin by phone
+    const result = await db.query('SELECT * FROM admins WHERE phone = $1 AND is_active = true', [phone]);
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({
+        error: 'Admin not found',
+        code: 'ADMIN_NOT_FOUND',
+      });
+    }
+
+    const admin = result.rows[0];
+    const token = generateToken(admin.admin_id, 'ADMIN');
+
+    // Update last login
+    await db.query('UPDATE admins SET last_login = CURRENT_TIMESTAMP WHERE admin_id = $1', [admin.admin_id]);
+
+    res.json({
+      data: {
+        admin_id: admin.admin_id,
+        name: admin.name,
+        email: admin.email,
+        role: admin.role,
+        permissions: admin.permissions,
+        token,
+      },
+      meta: { timestamp: new Date().toISOString() },
+    });
+  } catch (err) {
+    console.error('Admin login error:', err);
+    res.status(500).json({
+      error: 'Admin login failed',
+      code: 'ADMIN_LOGIN_FAILED',
+    });
+  }
+});
+
+// =====================================================
+// GET /api/auth/admin/me
+// Get current admin profile (requires JWT)
+// =====================================================
+router.get('/admin/me', authMiddleware('ADMIN'), async (req, res) => {
+  try {
+    const { admin_id } = req.user;
+    const result = await db.query('SELECT admin_id, name, email, phone, role, permissions, last_login, created_at FROM admins WHERE admin_id = $1', [admin_id]);
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({
+        error: 'Admin not found',
+        code: 'ADMIN_NOT_FOUND',
+      });
+    }
+
+    const admin = result.rows[0];
+    res.json({
+      data: admin,
+      meta: { timestamp: new Date().toISOString() },
+    });
+  } catch (err) {
+    console.error('Admin profile fetch error:', err);
+    res.status(500).json({
+      error: 'Failed to fetch admin profile',
+      code: 'ADMIN_PROFILE_FETCH_FAILED',
     });
   }
 });

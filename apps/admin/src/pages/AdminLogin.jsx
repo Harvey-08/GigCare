@@ -17,27 +17,26 @@ export default function AdminLogin({ onLogin }) {
     try {
       setLoading(true);
       
-      // For demo: create admin token with hardcoded credentials
-      // In production: would verify phone/OTP against admin database
-      if (formData.phone === '9876543210' && formData.otp === '123456') {
-        // Mock admin token creation
-        // Real implementation would call /auth/admin-login endpoint
-        const mockAdminData = {
-          admin_id: 'admin-001',
-          email: 'admin@gigcare.com',
-          role: 'ADMIN',
-        };
-        
-        // In real scenario, this would come from server
-        const mockToken = 'mock-admin-jwt-token-' + Date.now();
-        localStorage.setItem('admin_token', mockToken);
-        
-        onLogin(mockAdminData, mockToken);
-      } else {
-        setError('Invalid credentials. Demo: 9876543210 / 123456');
-      }
+      // Call real admin login endpoint
+      const response = await apiClient.post('/auth/admin-login', {
+        phone: formData.phone,
+        otp: formData.otp,
+      });
+
+      const { data: adminData, meta } = response.data;
+      const { token, ...admin } = adminData;
+
+      // Store token and login
+      localStorage.setItem('admin_token', token);
+      onLogin(admin, token);
     } catch (err) {
-      setError(err.response?.data?.error || 'Login failed');
+      const errorMessage = err.response?.data?.error || 'Login failed';
+      setError(errorMessage);
+      
+      // Show demo credentials hint
+      if (errorMessage.includes('not found') || errorMessage.includes('Invalid')) {
+        setError('Demo credentials: Phone: 9876543210, OTP: 123456');
+      }
     } finally {
       setLoading(false);
     }
