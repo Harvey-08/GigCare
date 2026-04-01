@@ -7,8 +7,47 @@ const db = require('../models/db');
 const router = express.Router();
 
 // =====================================================
+// POST /api/webhooks/razorpay-payment
+// Simulate Razorpay payment callback (for demo)
+// =====================================================
+router.post('/razorpay-payment', async (req, res) => {
+  try {
+    const { policy_id, payment_id } = req.body;
+
+    if (!policy_id || !payment_id) {
+      return res.status(422).json({
+        error: 'Missing required fields: policy_id, payment_id',
+        code: 'MISSING_FIELDS',
+      });
+    }
+
+    // Activate policy
+    const result = await db.activatePolicy(policy_id, payment_id);
+    
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Policy not found', code: 'POLICY_NOT_FOUND' });
+    }
+
+    const policy = result.rows[0];
+
+    res.json({
+      data: {
+        policy_id,
+        status: policy.status,
+        activated_at: new Date().toISOString(),
+        payment_id,
+      },
+      meta: { timestamp: new Date().toISOString() },
+    });
+  } catch (err) {
+    console.error('Webhook error:', err);
+    res.status(500).json({ error: 'Webhook processing failed', code: 'WEBHOOK_FAILED' });
+  }
+});
+
+// =====================================================
 // POST /api/webhooks/razorpay
-// Razorpay payment/payout webhooks
+// Razorpay payment/payout webhooks (production)
 // =====================================================
 router.post('/razorpay', async (req, res) => {
   try {

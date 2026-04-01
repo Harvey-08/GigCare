@@ -15,7 +15,7 @@ export default function PoliciesList({ worker }) {
   const fetchPolicies = async () => {
     try {
       setLoading(true);
-      const res = await apiClient.get(`/policies/worker/${worker?.id}`);
+      const res = await apiClient.get(`/policies/worker/${worker?.worker_id}`);
       setPolicies(res.data.data || []);
     } catch (err) {
       console.error('Failed to fetch policies:', err.message);
@@ -66,14 +66,14 @@ export default function PoliciesList({ worker }) {
           <div className="space-y-4">
             {policies.map((policy) => (
               <div
-                key={policy.id}
+                key={policy.policy_id}
                 className={`border-2 rounded-lg p-4 ${statusColor[policy.status]}`}
               >
                 <div className="flex items-start justify-between mb-3">
                   <div>
                     <p className="text-lg font-semibold text-gray-900">{policy.coverage_tier}</p>
                     <p className="text-sm text-gray-600">
-                      Zone: {policy.zone_id}
+                      Premium: ₹{policy.premium_paid}
                     </p>
                   </div>
                   <span className={`inline-block px-3 py-1 rounded text-xs font-semibold ${statusBadge[policy.status]}`}>
@@ -83,21 +83,18 @@ export default function PoliciesList({ worker }) {
 
                 <div className="grid grid-cols-2 gap-4 mb-3">
                   <div>
-                    <p className="text-xs text-gray-600">Premium</p>
-                    <p className="text-lg font-bold text-gray-900">₹{policy.weekly_premium_rupees}</p>
+                    <p className="text-xs text-gray-600">Week Start</p>
+                    <p className="text-sm font-semibold text-gray-900">{new Date(policy.week_start).toLocaleDateString()}</p>
                   </div>
                   <div>
                     <p className="text-xs text-gray-600">Max Payout</p>
-                    <p className="text-lg font-bold text-gray-900">₹{policy.max_payout_rupees}</p>
+                    <p className="text-lg font-bold text-gray-900">₹{policy.max_payout}</p>
                   </div>
                 </div>
 
                 <div className="text-xs text-gray-600 space-y-1 border-t border-gray-200 pt-3">
-                  <p>Active: {new Date(policy.activation_date).toLocaleDateString()}</p>
-                  <p>Expires: {new Date(policy.expiry_date).toLocaleDateString()}</p>
-                  {policy.claim_count > 0 && (
-                    <p className="font-semibold text-gray-900">Claims: {policy.claim_count}</p>
-                  )}
+                  <p>Created: {new Date(policy.created_at).toLocaleDateString()}</p>
+                  <p>Expires: {new Date(policy.week_end).toLocaleDateString()}</p>
                 </div>
               </div>
             ))}

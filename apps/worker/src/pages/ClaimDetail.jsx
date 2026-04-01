@@ -85,9 +85,9 @@ export default function ClaimDetail() {
             {/* Payout Amount - CRITICAL FOR 4-STAR */}
             <div className="bg-white rounded-lg p-6 border-2 border-green-200">
               <p className="text-sm font-medium text-gray-600 mb-2">Payout Amount</p>
-              <p className="text-5xl font-bold text-green-600">₹{claim.payout_amount}</p>
+              <p className="text-5xl font-bold text-green-600">₹{claim.final_payout}</p>
               <p className="text-xs text-gray-500 mt-2">
-                Based on disruption hours, zone risk, and your trust score
+                Based on disruption hours ({claim.disruption_hours}h), zone risk, and trust score ({(claim.trust_score * 100).toFixed(0)}%)
               </p>
             </div>
 
@@ -99,7 +99,7 @@ export default function ClaimDetail() {
                 <div>
                   <p className="font-semibold text-gray-900">{claim.trigger_type.replace(/_/g, ' ')}</p>
                   <p className="text-xs text-gray-500">
-                    Severity: {(claim.severity_factor * 100).toFixed(0)}%
+                    Disruption: {claim.disruption_hours} hours
                   </p>
                 </div>
               </div>
@@ -139,19 +139,19 @@ export default function ClaimDetail() {
               <div className="grid grid-cols-2 gap-3 text-sm">
                 <div>
                   <p className="text-gray-600">Claim ID</p>
-                  <p className="font-mono text-gray-900">{claim.id}</p>
+                  <p className="font-mono text-gray-900">{claim.claim_id}</p>
                 </div>
                 <div>
                   <p className="text-gray-600">Date</p>
                   <p className="text-gray-900">{new Date(claim.created_at).toLocaleDateString()}</p>
                 </div>
                 <div>
-                  <p className="text-gray-600">Zone</p>
-                  <p className="text-gray-900">{claim.zone_id}</p>
+                  <p className="text-gray-600">Policy ID</p>
+                  <p className="text-gray-900">{claim.policy_id}</p>
                 </div>
                 <div>
-                  <p className="text-gray-600">Policy</p>
-                  <p className="text-gray-900">{claim.policy_id}</p>
+                  <p className="text-gray-600">Worker ID</p>
+                  <p className="text-gray-900">{claim.worker_id}</p>
                 </div>
               </div>
             </div>

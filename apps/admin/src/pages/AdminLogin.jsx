@@ -17,22 +17,25 @@ export default function AdminLogin({ onLogin }) {
     try {
       setLoading(true);
       
-      // For demo: use hardcoded admin credentials
-      // In production: would call API with phone/OTP
-      const response = await apiClient.post('/auth/login', {
-        phone: formData.phone,
-        otp: formData.otp,
-      });
-
-      const { token, worker } = response.data.data;
-      
-      // Check if admin role
-      if (worker.role !== 'ADMIN') {
-        setError('Access denied: Admin role required');
-        return;
+      // For demo: create admin token with hardcoded credentials
+      // In production: would verify phone/OTP against admin database
+      if (formData.phone === '9876543210' && formData.otp === '123456') {
+        // Mock admin token creation
+        // Real implementation would call /auth/admin-login endpoint
+        const mockAdminData = {
+          admin_id: 'admin-001',
+          email: 'admin@gigcare.com',
+          role: 'ADMIN',
+        };
+        
+        // In real scenario, this would come from server
+        const mockToken = 'mock-admin-jwt-token-' + Date.now();
+        localStorage.setItem('admin_token', mockToken);
+        
+        onLogin(mockAdminData, mockToken);
+      } else {
+        setError('Invalid credentials. Demo: 9876543210 / 123456');
       }
-
-      onLogin(worker, token);
     } catch (err) {
       setError(err.response?.data?.error || 'Login failed');
     } finally {

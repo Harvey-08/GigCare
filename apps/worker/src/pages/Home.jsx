@@ -17,8 +17,8 @@ export default function Home({ worker, onLogout }) {
     try {
       setLoading(true);
       const [policiesRes, claimsRes] = await Promise.all([
-        apiClient.get(`/policies/worker/${worker?.id}`),
-        apiClient.get(`/claims/worker/${worker?.id}`),
+        apiClient.get(`/policies/worker/${worker?.worker_id}`),
+        apiClient.get(`/claims/worker/${worker?.worker_id}`),
       ]);
       setPolicies(policiesRes.data.data || []);
       setClaims(claimsRes.data.data || []);
@@ -72,16 +72,16 @@ export default function Home({ worker, onLogout }) {
             <div className="flex items-start justify-between mb-4">
               <div>
                 <p className="text-sm font-medium opacity-90">Active Policy</p>
-                <p className="text-2xl font-bold">₹{activePolicy.weekly_premium_rupees}/week</p>
+                <p className="text-2xl font-bold">₹{activePolicy.premium_paid}/week</p>
               </div>
               <span className="inline-block px-3 py-1 bg-white bg-opacity-20 text-sm font-semibold rounded">
                 {activePolicy.coverage_tier}
               </span>
             </div>
             <div className="text-sm space-y-1">
-              <p>Max Payout: ₹{activePolicy.max_payout_rupees}</p>
-              <p>Zone: {activePolicy.zone_id}</p>
-              <p>Expires: {new Date(activePolicy.expiry_date).toLocaleDateString()}</p>
+              <p>Max Payout: ₹{activePolicy.max_payout}</p>
+              <p>Period: {new Date(activePolicy.week_start).toLocaleDateString()} - {new Date(activePolicy.week_end).toLocaleDateString()}</p>
+              <p>Status: {activePolicy.status}</p>
             </div>
           </div>
         ) : (
@@ -130,8 +130,8 @@ export default function Home({ worker, onLogout }) {
             <div className="space-y-3">
               {recentClaims.map((claim) => (
                 <div
-                  key={claim.id}
-                  onClick={() => navigate(`/claims/${claim.id}`)}
+                  key={claim.claim_id}
+                  onClick={() => navigate(`/claims/${claim.claim_id}`)}
                   className={`border-2 rounded-lg p-4 cursor-pointer hover:shadow-md transition-shadow ${statusColor[claim.status]}`}
                 >
                   <div className="flex items-start justify-between">
@@ -145,7 +145,7 @@ export default function Home({ worker, onLogout }) {
                       <span className={statusBadge[claim.status]}>
                         {claim.status}
                       </span>
-                      <p className="text-lg font-bold mt-1">₹{claim.payout_amount}</p>
+                      <p className="text-lg font-bold mt-1">₹{claim.final_payout}</p>
                     </div>
                   </div>
                 </div>
