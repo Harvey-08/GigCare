@@ -39,16 +39,22 @@ const authMiddleware = (requiredRole = null) => (req, res, next) => {
 // =====================================================
 // GENERATE JWT
 // =====================================================
-const generateToken = (worker_id, role = 'WORKER') => {
-  return jwt.sign(
-    {
-      worker_id,
-      role,
-      iat: Math.floor(Date.now() / 1000),
-    },
-    process.env.JWT_SECRET,
-    { expiresIn: process.env.JWT_EXPIRES_IN || '1h' }
-  );
+const generateToken = (user_id, role = 'WORKER') => {
+  const payload = {
+    role,
+    iat: Math.floor(Date.now() / 1000),
+  };
+
+  // Add appropriate ID based on role
+  if (role === 'ADMIN') {
+    payload.admin_id = user_id;
+  } else {
+    payload.worker_id = user_id;
+  }
+
+  return jwt.sign(payload, process.env.JWT_SECRET, {
+    expiresIn: process.env.JWT_EXPIRES_IN || '1h'
+  });
 };
 
 // =====================================================

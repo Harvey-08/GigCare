@@ -1,12 +1,11 @@
 -- GigCare Demo Seed Data
 -- Run this after migrations to populate demo data
--- Reset script: TRUNCATE ALL and reseed for demo recordings
 
 -- =====================================================
 -- CLEAR ALL DATA (RESTART SEQUENCES)
 -- =====================================================
 TRUNCATE TABLE trigger_events, location_signals, claims, policies, 
-              premium_quotes, devices, workers, zones RESTART IDENTITY CASCADE;
+              premium_quotes, devices, workers, admins, zones RESTART IDENTITY CASCADE;
 
 -- =====================================================
 -- ZONES (5 Bengaluru zones with different risk profiles)
@@ -78,3 +77,17 @@ VALUES
   ('sig-001', 'clm-001', 'dev-001', 12.9698, 77.7499, 15.0, ARRAY['234', '235', '236'], ARRAY['Zomato_Zone02', 'Airtel_Home'], 3.2, '103.21.45.67', CURRENT_TIMESTAMP),
   ('sig-002', 'clm-002', 'dev-002', 12.9352, 77.6245, 12.0, ARRAY['121', '122'], ARRAY['Jio_Free'], 2.8, '103.21.40.89', CURRENT_TIMESTAMP),
   ('sig-003', 'clm-003', 'dev-003', 12.9716, 77.6412, 18.0, ARRAY['345', '346'], ARRAY['Vodafone_Indir'], 3.5, '103.21.50.123', CURRENT_TIMESTAMP);
+
+-- =====================================================
+-- ADMINS (for admin dashboard)
+-- =====================================================
+INSERT INTO admins (admin_id, email, name, phone, role, permissions, is_active)
+VALUES
+  ('admin-001', 'admin@gigcare.com', 'Admin User', '9876543210', 'ADMIN', ARRAY['read', 'write', 'admin'], TRUE);
+
+-- =====================================================
+-- ADMINS (for admin dashboard)
+-- =====================================================
+INSERT INTO admins (admin_id, email, name, phone, role, permissions, is_active)
+VALUES
+  ('admin-001', 'admin@gigcare.com', 'Admin User', '9876543210', 'ADMIN', ARRAY['read', 'write', 'admin'], TRUE);
