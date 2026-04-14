@@ -3,11 +3,11 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { apiClient } from '../services/api';
 
-export default function PolicyPurchase({ worker }) {
+export default function PolicyPurchase({ profile, onLogout }) {
   const navigate = useNavigate();
   const [premium, setPremium] = useState(null);
   const [zones, setZones] = useState([]);
-  const [selectedZone, setSelectedZone] = useState(worker?.zone_id || 'zone_01');
+  const [selectedZone, setSelectedZone] = useState(profile?.zone_id || 'zone_01');
   const [loading, setLoading] = useState(false);
   const [purchasing, setPurchasing] = useState(false);
   const [error, setError] = useState('');
@@ -45,6 +45,10 @@ export default function PolicyPurchase({ worker }) {
 
       setPremium(res.data.data);
     } catch (err) {
+      if (err.response?.status === 404 && err.response?.data?.error === 'Profile not found') {
+        if (onLogout) onLogout();
+        return;
+      }
       setError(err.response?.data?.error || 'Failed to calculate premium');
     } finally {
       setLoading(false);

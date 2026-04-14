@@ -1,12 +1,12 @@
 // services/api/middleware/auth.js
 // JWT middleware - Person A
 
-const jwt = require('jsonwebtoken');
+const supabase = require('../models/supabase');
 
 // =====================================================
-// AUTH MIDDLEWARE: Verify JWT
+// AUTH MIDDLEWARE: Verify Supabase JWT and Role
 // =====================================================
-const authMiddleware = (requiredRole = null) => (req, res, next) => {
+const authMiddleware = (requiredRole = null) => async (req, res, next) => {
   const token = req.headers.authorization?.split(' ')[1];
 
   if (!token) {
@@ -17,16 +17,43 @@ const authMiddleware = (requiredRole = null) => (req, res, next) => {
   }
 
   try {
-    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+    // 1. Verify token with Supabase
+    const { data: { user }, error: authError } = await supabase.auth.getUser(token);
 
-    if (requiredRole && decoded.role !== requiredRole) {
+    if (authError || !user) {
+      throw new Error('Invalid token');
+    }
+
+    // 2. Fetch profile to check role
+    const { data: profile, error: profileError } = await supabase
+      .from('profiles')
+      .select('*')
+      .eq('id', user.id)
+      .single();
+
+    if (profileError || !profile) {
+      return res.status(403).json({
+        error: 'Profile not found',
+        code: 'PROFILE_NOT_FOUND',
+      });
+    }
+
+    // 3. Check role if required
+    if (requiredRole && profile.role !== requiredRole) {
       return res.status(403).json({
         error: 'Insufficient permissions',
         code: 'INSUFFICIENT_PERMISSIONS',
       });
     }
 
-    req.user = decoded;
+    // Attach user and profile to request
+    req.user = { 
+      ...user, 
+      role: profile.role,
+      user_id: user.id, // Primary ID for DB queries now
+      profile 
+    };
+    
     next();
   } catch (error) {
     return res.status(401).json({
@@ -34,27 +61,6 @@ const authMiddleware = (requiredRole = null) => (req, res, next) => {
       code: 'INVALID_TOKEN',
     });
   }
-};
-
-// =====================================================
-// GENERATE JWT
-// =====================================================
-const generateToken = (user_id, role = 'WORKER') => {
-  const payload = {
-    role,
-    iat: Math.floor(Date.now() / 1000),
-  };
-
-  // Add appropriate ID based on role
-  if (role === 'ADMIN') {
-    payload.admin_id = user_id;
-  } else {
-    payload.worker_id = user_id;
-  }
-
-  return jwt.sign(payload, process.env.JWT_SECRET, {
-    expiresIn: process.env.JWT_EXPIRES_IN || '1h'
-  });
 };
 
 // =====================================================
@@ -73,6 +79,5 @@ const internalServiceAuth = (req, res, next) => {
 
 module.exports = {
   authMiddleware,
-  generateToken,
   internalServiceAuth,
 };

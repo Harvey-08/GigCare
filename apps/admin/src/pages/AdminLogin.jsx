@@ -1,104 +1,92 @@
 // apps/admin/src/pages/AdminLogin.jsx
 import React, { useState } from 'react';
-import { apiClient } from '../services/api';
+import { supabase } from '../supabaseClient';
 
-export default function AdminLogin({ onLogin }) {
-  const [formData, setFormData] = useState({
-    phone: '9876543210',
-    otp: '123456',
-  });
+export default function AdminLogin({ error: authError }) {
+  const [email, setEmail] = useState('');
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState('');
+  const [message, setMessage] = useState('');
+  const [error, setError] = useState(authError || '');
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError('');
+    setMessage('');
+
+    if (!email || !email.includes('@')) {
+      setError('Please enter a valid administrator email');
+      return;
+    }
 
     try {
       setLoading(true);
-      
-      // Call real admin login endpoint
-      const response = await apiClient.post('/auth/admin-login', {
-        phone: formData.phone,
-        otp: formData.otp,
+      const { error: authError } = await supabase.auth.signInWithOtp({
+        email,
+        options: {
+          emailRedirectTo: 'http://localhost:3013',
+        },
       });
 
-      const { data: adminData, meta } = response.data;
-      const { token, ...admin } = adminData;
-
-      // Store token and login
-      localStorage.setItem('admin_token', token);
-      onLogin(admin, token);
+      if (authError) throw authError;
+      setMessage('Magic link sent! Please check your admin inbox.');
     } catch (err) {
-      const errorMessage = err.response?.data?.error || 'Login failed';
-      setError(errorMessage);
-      
-      // Show demo credentials hint
-      if (errorMessage.includes('not found') || errorMessage.includes('Invalid')) {
-        setError('Demo credentials: Phone: 9876543210, OTP: 123456');
-      }
+      console.error('Admin login error:', err);
+      setError(err.message || 'Failed to send admin login link.');
     } finally {
       setLoading(false);
     }
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 flex items-center justify-center p-4">
-      <div className="bg-white rounded-lg shadow-2xl max-w-md w-full p-8">
-        {/* Header */}
-        <div className="text-center mb-8">
-          <div className="text-5xl mb-3">⚙️</div>
-          <h1 className="text-2xl font-bold text-gray-900">GigCare Admin</h1>
-          <p className="text-sm text-gray-600 mt-2">Dashboard Access</p>
+    <div className="min-h-screen bg-slate-950 flex items-center justify-center p-4">
+      <div className="bg-slate-900 border border-slate-800 rounded-2xl shadow-2xl max-w-md w-full p-10">
+        <div className="text-center mb-10">
+          <div className="w-20 h-20 bg-indigo-600/10 text-indigo-500 rounded-3xl flex items-center justify-center mx-auto mb-6 border border-indigo-500/20">
+            <svg className="w-10 h-10" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+            </svg>
+          </div>
+          <h1 className="text-3xl font-bold text-white mb-2">GigCare Control</h1>
+          <p className="text-slate-400">Institutional Dashboard Access</p>
         </div>
 
-        {/* Form */}
-        <form onSubmit={handleSubmit} className="space-y-4">
+        <form onSubmit={handleSubmit} className="space-y-6">
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
-              Phone Number
-            </label>
+            <label className="block text-sm font-medium text-slate-300 mb-2">Admin Email</label>
             <input
-              type="tel"
-              value={formData.phone}
-              onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
-              placeholder="9876543210"
-              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-slate-600 focus:border-transparent"
+              type="email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value.toLowerCase())}
+              placeholder="admin@gigcare.com"
+              className="w-full px-4 py-4 bg-slate-800 border border-slate-700 rounded-xl text-white focus:ring-2 focus:ring-indigo-500 outline-none transition-all placeholder:text-slate-600"
+              required
             />
           </div>
 
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
-              OTP
-            </label>
-            <input
-              type="text"
-              value={formData.otp}
-              onChange={(e) => setFormData({ ...formData, otp: e.target.value })}
-              placeholder="123456"
-              maxLength="6"
-              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-slate-600 focus:border-transparent text-2xl tracking-widest"
-            />
-          </div>
+          {(error || authError) && (
+            <div className="p-4 bg-red-500/10 border border-red-500/20 rounded-xl text-sm text-red-400 font-medium">
+              {error || authError}
+            </div>
+          )}
 
-          {error && (
-            <div className="p-3 bg-red-50 border border-red-200 rounded-lg text-sm text-red-700">
-              {error}
+          {message && (
+            <div className="p-4 bg-emerald-500/10 border border-emerald-500/20 rounded-xl text-sm text-emerald-400 font-medium">
+              {message}
             </div>
           )}
 
           <button
             type="submit"
-            className="w-full px-4 py-2 bg-slate-700 rounded-lg text-white font-medium hover:bg-slate-800 disabled:opacity-50"
             disabled={loading}
+            className="w-full px-6 py-4 bg-indigo-600 rounded-xl text-white font-bold text-lg hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all transform hover:scale-[1.01] active:scale-[0.99] shadow-lg shadow-indigo-900/20"
           >
-            {loading ? 'Logging in...' : 'Access Dashboard'}
+            {loading ? 'Processing...' : 'Verify Access'}
           </button>
         </form>
 
-        {/* Demo Note */}
-        <p className="text-xs text-center text-gray-500 mt-6">
-          Demo: Phone <span className="font-mono">9876543210</span>, OTP <span className="font-mono">123456</span>
+        <p className="text-xs text-center text-slate-500 mt-10 uppercase tracking-widest font-semibold">
+          Secure Administrative Gateway
         </p>
       </div>
     </div>

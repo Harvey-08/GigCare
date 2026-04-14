@@ -1,20 +1,20 @@
 // apps/admin/src/services/api.js
 import axios from 'axios';
-import { getAdminToken } from '../utils/auth';
+import { supabase } from '../supabaseClient';
 
 const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:3011/api';
 
 export const apiClient = axios.create({
   baseURL: API_BASE_URL,
-  timeout: 10000,
+  timeout: 15000,
 });
 
-// Add JWT token to all requests
+// Interceptor to inject Supabase JWT
 apiClient.interceptors.request.use(
-  (config) => {
-    const token = getAdminToken();
-    if (token) {
-      config.headers.Authorization = `Bearer ${token}`;
+  async (config) => {
+    const { data: { session } } = await supabase.auth.getSession();
+    if (session) {
+      config.headers.Authorization = `Bearer ${session.access_token}`;
     }
     config.headers['Content-Type'] = 'application/json';
     return config;
@@ -22,12 +22,12 @@ apiClient.interceptors.request.use(
   (error) => Promise.reject(error)
 );
 
-// Handle responses
+// Response interceptor for session expiry
 apiClient.interceptors.response.use(
   (response) => response,
   (error) => {
     if (error.response?.status === 401) {
-      localStorage.removeItem('gigcare_admin_token');
+      supabase.auth.signOut();
       window.location.href = '/';
     }
     return Promise.reject(error);

@@ -2,7 +2,7 @@
 // Evaluate all triggers and dispatch claims - Person C
 
 const axios = require('axios');
-const db = require('../api/models/db'); // Shared DB client
+const db = require('./models/db'); // Localized DB client
 
 // Zone definitions
 const ZONES = [

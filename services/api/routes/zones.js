@@ -9,9 +9,10 @@ const router = express.Router();
 // GET /api/zones - List all zones
 router.get('/', async (req, res) => {
   try {
-    const result = await db.getZones();
+    const { data: zones, error } = await db.getZones();
+    if (error) throw error;
     res.json({
-      data: result.rows,
+      data: zones,
       meta: { timestamp: new Date().toISOString() },
     });
   } catch (err) {
@@ -23,11 +24,12 @@ router.get('/', async (req, res) => {
 // GET /api/zones/:zone_id/risk - Get zone risk details
 router.get('/:zone_id/risk', async (req, res) => {
   try {
-    const result = await db.getZone(req.params.zone_id);
-    if (result.rows.length === 0) {
+    const { data: zone, error } = await db.getZone(req.params.zone_id);
+    if (error) throw error;
+    if (!zone) {
       return res.status(404).json({ error: 'Zone not found', code: 'ZONE_NOT_FOUND' });
     }
-    const zone = result.rows[0];
+    
     res.json({
       data: {
         zone_id: zone.zone_id,

@@ -29,6 +29,17 @@ app.use(cors({
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
+// Request Logger
+app.use((req, res, next) => {
+  console.log(`[${new Date().toISOString()}] ${req.method} ${req.url}`);
+  if (req.headers.authorization) {
+    console.log(`  Auth: ${req.headers.authorization.substring(0, 20)}...`);
+  } else {
+    console.log('  Auth: NONE');
+  }
+  next();
+});
+
 // =====================================================
 // ROUTES
 // =====================================================
@@ -64,9 +75,8 @@ app.use((err, req, res, next) => {
 // =====================================================
 const PORT = process.env.PORT || 3001;
 app.listen(PORT, () => {
-  console.log(`🚀 GigCare API running on port ${PORT}`);
-  console.log(`📊 Database: ${process.env.DATABASE_URL.split('@')[1]}`);
-  console.log(`🔑 JWT Secret: ${process.env.JWT_SECRET ? '✓ Set' : '✗ Missing'}`);
+  console.log(`🚀 GigCare API + Supabase running on port ${PORT}`);
+  console.log(`📊 Supabase Project: ${process.env.SUPABASE_URL}`);
 });
 
 module.exports = app;
