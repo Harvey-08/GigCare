@@ -77,25 +77,25 @@ export default function Dashboard({ admin, onLogout }) {
             <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-8">
               <div className="bg-white rounded-lg p-6 border border-gray-200">
                 <p className="text-gray-600 text-sm font-medium">Loss Ratio</p>
-                <p className="text-3xl font-bold text-gray-900 mt-2">{dashboard.loss_ratio}%</p>
+                <p className="text-3xl font-bold text-gray-900 mt-2">{dashboard?.loss_ratio_percent || 0}%</p>
                 <p className="text-xs text-gray-500 mt-1">Payouts vs Premiums</p>
               </div>
 
               <div className="bg-white rounded-lg p-6 border border-gray-200">
                 <p className="text-gray-600 text-sm font-medium">Total Premiums</p>
-                <p className="text-3xl font-bold text-teal-600 mt-2">₹{dashboard.total_premiums}</p>
+                <p className="text-3xl font-bold text-teal-600 mt-2">₹{dashboard?.total_premiums_collected || 0}</p>
                 <p className="text-xs text-gray-500 mt-1">All active policies</p>
               </div>
 
               <div className="bg-white rounded-lg p-6 border border-gray-200">
                 <p className="text-gray-600 text-sm font-medium">Total Payouts</p>
-                <p className="text-3xl font-bold text-green-600 mt-2">₹{dashboard.total_payouts}</p>
+                <p className="text-3xl font-bold text-green-600 mt-2">₹{dashboard?.total_payouts || 0}</p>
                 <p className="text-xs text-gray-500 mt-1">Claim disbursements</p>
               </div>
 
               <div className="bg-white rounded-lg p-6 border border-gray-200">
                 <p className="text-gray-600 text-sm font-medium">Claims Today</p>
-                <p className="text-3xl font-bold text-blue-600 mt-2">{dashboard.claims_today}</p>
+                <p className="text-3xl font-bold text-blue-600 mt-2">{dashboard?.claims_today || 0}</p>
                 <p className="text-xs text-gray-500 mt-1">Last 24 hours</p>
               </div>
             </div>
@@ -156,11 +156,11 @@ export default function Dashboard({ admin, onLogout }) {
                   </thead>
                   <tbody className="divide-y divide-gray-200">
                     {claims.slice(0, 10).map((claim) => (
-                      <tr key={claim.id} className="hover:bg-gray-50">
-                        <td className="px-6 py-3 text-sm font-mono text-gray-600">{claim.id.slice(0, 8)}...</td>
+                      <tr key={claim.claim_id} className="hover:bg-gray-50">
+                        <td className="px-6 py-3 text-sm font-mono text-gray-600">{claim.claim_id?.slice(0, 8) || 'N/A'}...</td>
                         <td className="px-6 py-3 text-sm text-gray-900">{claim.worker_id || '—'}</td>
                         <td className="px-6 py-3 text-sm text-gray-900">{claim.trigger_type}</td>
-                        <td className="px-6 py-3 text-sm font-bold text-green-600">₹{claim.payout_amount}</td>
+                        <td className="px-6 py-3 text-sm font-bold text-green-600">₹{claim.final_payout}</td>
                         <td className="px-6 py-3 text-sm">
                           <span className={`inline-block px-2 py-1 rounded text-xs font-semibold ${statusBadge[claim.status]}`}>
                             {claim.status}

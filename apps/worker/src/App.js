@@ -4,6 +4,7 @@ import { BrowserRouter, Routes, Route } from 'react-router-dom';
 import { getToken, setToken, clearToken } from './utils/auth';
 import Splash from './pages/Splash';
 import Register from './pages/Register';
+import Login from './pages/Login';
 import Home from './pages/Home';
 import PoliciesList from './pages/PoliciesList';
 import PolicyPurchase from './pages/PolicyPurchase';
@@ -52,6 +53,7 @@ function App() {
             <>
               <Route path="/" element={<Splash />} />
               <Route path="/register" element={<Register onLogin={handleLogin} />} />
+              <Route path="/login" element={<Login onLogin={handleLogin} />} />
             </>
           ) : (
             <>

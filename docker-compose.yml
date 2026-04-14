@@ -10,7 +10,7 @@ services:
       POSTGRES_USER: gigcare_user
       POSTGRES_PASSWORD: gigcare_pass
     ports:
-      - "5433:5432"
+      - "5435:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
       - ./database/migrations:/docker-entrypoint-initdb.d
@@ -29,7 +29,7 @@ services:
       dockerfile: Dockerfile
     container_name: gigcare-api
     ports:
-      - "3001:3001"
+      - "3011:3001"
     environment:
       DATABASE_URL: postgresql://gigcare_user:gigcare_pass@postgres:5432/gigcare
       NODE_ENV: development
@@ -43,7 +43,7 @@ services:
       ML_PREMIUM_SERVICE_URL: http://ml-premium:5001
       INTERNAL_SERVICE_KEY: internal_service_key_change_me
       PORT: 3001
-      CORS_ORIGIN: http://localhost:3000
+      CORS_ORIGIN: http://localhost:3010
       USE_MOCK_DATA: "true"
     depends_on:
       postgres:
@@ -106,6 +106,36 @@ services:
     volumes:
       - ./services/trigger-engine:/app
       - /app/node_modules
+    networks:
+      - gigcare-net
+
+  # Frontend: Worker Application
+  worker-app:
+    build:
+      context: ./apps/worker
+      dockerfile: Dockerfile
+    container_name: gigcare-worker
+    ports:
+      - "3010:3010"
+    environment:
+      - REACT_APP_API_URL=http://localhost:3011/api
+    depends_on:
+      - api
+    networks:
+      - gigcare-net
+
+  # Frontend: Admin Application
+  admin-app:
+    build:
+      context: ./apps/admin
+      dockerfile: Dockerfile
+    container_name: gigcare-admin
+    ports:
+      - "3013:3013"
+    environment:
+      - REACT_APP_API_URL=http://localhost:3011/api
+    depends_on:
+      - api
     networks:
       - gigcare-net
 
