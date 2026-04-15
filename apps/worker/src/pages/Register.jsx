@@ -21,7 +21,7 @@ export default function Register() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
-  const PLATFORMS = ['ZOMATO', 'SWIGGY', 'ZEPTO', 'AMAZON'];
+  const PLATFORMS = ['ZOMATO', 'SWIGGY'];
 
   // Fetch zones on mount
   useEffect(() => {

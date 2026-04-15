@@ -48,6 +48,41 @@ router.post('/', authMiddleware('worker'), async (req, res) => {
 });
 
 // =====================================
+// POST /api/policies/:policy_id/activate
+// =====================================
+router.post('/:policy_id/activate', authMiddleware('worker'), async (req, res) => {
+  try {
+    const { policy_id } = req.params;
+    const { user_id } = req.user;
+
+    const { data: policy, error: fetchError } = await db.supabase
+      .from('policies')
+      .select('*')
+      .eq('policy_id', policy_id)
+      .single();
+
+    if (fetchError || !policy) {
+      return res.status(404).json({ error: 'Policy not found', code: 'POLICY_NOT_FOUND' });
+    }
+
+    if (policy.user_id !== user_id) {
+      return res.status(403).json({ error: 'Forbidden', code: 'FORBIDDEN' });
+    }
+
+    const { data: updatedPolicy, error: updateError } = await db.activatePolicy(policy_id, 'demo_payment_id');
+
+    if (updateError) {
+      throw updateError;
+    }
+
+    res.json({ data: updatedPolicy });
+  } catch (err) {
+    console.error('Policy activation error:', err);
+    res.status(500).json({ error: 'Policy activation failed', code: 'POLICY_ACTIVATION_FAILED' });
+  }
+});
+
+// =====================================
 // GET /api/policies/worker/:user_id
 // =====================================
 router.get('/worker/:user_id', authMiddleware('worker'), async (req, res) => {

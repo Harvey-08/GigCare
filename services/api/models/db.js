@@ -42,8 +42,15 @@ const createPolicy = async (user_id, tier, premium, max_payout, week_start, week
     max_payout: max_payout,
     week_start,
     week_end,
-    status: 'ACTIVE'
+    status: 'PENDING_PAYMENT'
   }).select().single();
+};
+
+const activatePolicy = async (policy_id, payment_id) => {
+  return await supabase.from('policies').update({
+    status: 'ACTIVE',
+    razorpay_payment_id: payment_id
+  }).eq('policy_id', policy_id).select().single();
 };
 
 const getPoliciesForUser = async (user_id) => {

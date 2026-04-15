@@ -8,6 +8,7 @@ export default function PolicyPurchase({ profile, onLogout }) {
   const [premium, setPremium] = useState(null);
   const [zones, setZones] = useState([]);
   const [selectedZone, setSelectedZone] = useState(profile?.zone_id || 'zone_01');
+  const [selectedTier, setSelectedTier] = useState(null);
   const [loading, setLoading] = useState(false);
   const [purchasing, setPurchasing] = useState(false);
   const [error, setError] = useState('');
@@ -44,6 +45,7 @@ export default function PolicyPurchase({ profile, onLogout }) {
       });
 
       setPremium(res.data.data);
+      setSelectedTier(res.data.data.coverage_tier || 'STANDARD');
     } catch (err) {
       if (err.response?.status === 404 && err.response?.data?.error === 'Profile not found') {
         if (onLogout) onLogout();
@@ -61,16 +63,17 @@ export default function PolicyPurchase({ profile, onLogout }) {
     try {
       setPurchasing(true);
       setError('');
+      const tier = selectedTier || premium.coverage_tier;
 
       // Step 1: Create policy
       const policyRes = await apiClient.post('/policies', {
         quote_id: premium.quote_id,
-        coverage_tier: premium.coverage_tier,
+        coverage_tier: tier,
       });
 
       const policyId = policyRes.data.data.id;
 
-      // Step 2: Simulate Razorpay payment
+      // Step 2: Simulate Razorpay payment / activation
       await apiClient.post(`/policies/${policyId}/activate`);
 
       // Success
@@ -155,12 +158,14 @@ export default function PolicyPurchase({ profile, onLogout }) {
             {/* Plan Details */}
             <div className="space-y-3">
               {['SEED', 'STANDARD', 'PREMIUM'].map((tier) => (
-                <div
+                <button
                   key={tier}
-                  className={`border-2 rounded-lg p-4 cursor-pointer transition-colors ${
-                    premium.coverage_tier === tier
+                  type="button"
+                  onClick={() => setSelectedTier(tier)}
+                  className={`w-full text-left border-2 rounded-lg p-4 transition-colors ${
+                    selectedTier === tier
                       ? 'border-teal-600 bg-teal-50'
-                      : 'border-gray-200 bg-white'
+                      : 'border-gray-200 bg-white hover:border-gray-300'
                   }`}
                 >
                   <div className="flex items-start justify-between">
@@ -179,7 +184,7 @@ export default function PolicyPurchase({ profile, onLogout }) {
                       </p>
                     </div>
                   </div>
-                </div>
+                </button>
               ))}
             </div>
 
