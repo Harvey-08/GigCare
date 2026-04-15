@@ -11,7 +11,15 @@ const router = express.Router();
 const OTP_EXPIRATION_MS = 10 * 60 * 1000;
 const pendingOtps = new Map();
 
-const transportConfig = process.env.SMTP_HOST
+const transportConfig = process.env.SMTP_HOST?.includes('gmail.com')
+  ? {
+      service: 'gmail',
+      auth: {
+        user: process.env.SMTP_USER,
+        pass: process.env.SMTP_PASS,
+      },
+    }
+  : process.env.SMTP_HOST
   ? {
       host: process.env.SMTP_HOST,
       port: Number(process.env.SMTP_PORT) || 587,
@@ -197,9 +205,11 @@ router.post('/verify-otp', async (req, res) => {
     res.json({ data: { token, profile } });
   } catch (err) {
     console.error('OTP verification error:', err);
-    res.status(err.code === 'INVALID_OTP' ? 401 : 500).json({
+    res.status(err.status || 500).json({
       error: err.message || 'OTP verification failed',
       code: err.code || 'OTP_VERIFICATION_FAILED',
+      details: err.details || null, // Supabase specific error details
+      hint: err.hint || null        // Supabase specific error hints
     });
   }
 });

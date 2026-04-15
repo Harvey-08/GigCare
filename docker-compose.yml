@@ -29,9 +29,9 @@ services:
       PORT: 3001
       CORS_ORIGIN: http://localhost:3010
       USE_MOCK_DATA: "true"
-    volumes:
-      - ./services/api:/app
-      - /app/node_modules
+    # volumes:
+    #   - ./services/api:/app
+    #   - /app/node_modules
     networks:
       - gigcare-net
 

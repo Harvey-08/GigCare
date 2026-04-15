@@ -1,7 +1,8 @@
 // apps/worker/src/pages/Home.jsx
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { supabase } from '../supabaseClient';
+import { apiClient } from '../services/api';
+// import { supabase } from '../supabaseClient'; // No longer hitting DB directly
 
 export default function Home({ profile, session, onLogout }) {
   const navigate = useNavigate();
@@ -17,22 +18,11 @@ export default function Home({ profile, session, onLogout }) {
     try {
       setLoading(true);
       
-      // Fetch Policies
-      const { data: policiesData } = await supabase
-        .from('policies')
-        .select('*')
-        .eq('user_id', session.user.id)
-        .order('created_at', { ascending: false });
+      const { data: policiesRes } = await apiClient.get(`/policies/worker/${profile?.id || session?.user?.id}`);
+      const { data: claimsRes } = await apiClient.get(`/claims/worker/${profile?.id || session?.user?.id}`);
 
-      // Fetch Claims
-      const { data: claimsData } = await supabase
-        .from('claims')
-        .select('*')
-        .eq('user_id', session.user.id)
-        .order('created_at', { ascending: false });
-
-      setPolicies(policiesData || []);
-      setClaims(claimsData || []);
+      setPolicies(policiesRes.data || []);
+      setClaims(claimsRes.data || []);
     } catch (err) {
       console.error('Failed to fetch data:', err.message);
     } finally {
