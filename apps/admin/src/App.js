@@ -1,7 +1,7 @@
 // apps/admin/src/App.js
 import React, { useState, useEffect } from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
-import { supabase } from './supabaseClient';
+import { getAdminToken, clearAdminToken } from './utils/auth';
 import AdminLogin from './pages/AdminLogin';
 import Dashboard from './pages/Dashboard';
 import TriggerPanel from './pages/TriggerPanel';
@@ -10,61 +10,60 @@ function App() {
   const [session, setSession] = useState(null);
   const [profile, setProfile] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [authError, setAuthError] = useState(null);
 
   useEffect(() => {
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      handleAuthChange(session);
-    });
-
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-      handleAuthChange(session);
-    });
-
-    return () => subscription.unsubscribe();
+    verifySession();
   }, []);
 
-  const handleAuthChange = async (newSession) => {
-    setSession(newSession);
-    if (newSession) {
-      await fetchAdminProfile(newSession.user.id);
-    } else {
-      setProfile(null);
-      setLoading(false);
+  const verifySession = () => {
+    const token = getAdminToken();
+    if (!token) {
+      handleAuthChange(null);
+      return;
+    }
+
+    try {
+      // Decode JWT payload without verifying signature (backend verifies it)
+      const payload = JSON.parse(atob(token.split('.')[1]));
+      
+      // Check expiration
+      if (payload.exp * 1000 < Date.now()) {
+        clearAdminToken();
+        handleAuthChange(null);
+        return;
+      }
+      
+      handleAuthChange({
+        token,
+        user: { id: payload.user_id, email: payload.email, role: payload.role },
+      });
+    } catch (e) {
+      console.error("Invalid token:", e);
+      clearAdminToken();
+      handleAuthChange(null);
     }
   };
 
-  const fetchAdminProfile = async (userId) => {
-    try {
-      const { data, error } = await supabase
-        .from('profiles')
-        .select('*')
-        .eq('id', userId)
-        .single();
-      
-      if (error) throw error;
-      
-      if (data.role !== 'admin') {
-        setAuthError('Access Denied: You do not have administrator privileges.');
-        await supabase.auth.signOut();
-      } else {
-        setProfile(data);
-        setAuthError(null);
-      }
-    } catch (err) {
-      console.error('Error fetching admin profile:', err.message);
-      setAuthError('Could not verify administrator profile.');
-      await supabase.auth.signOut();
-    } finally {
-      setLoading(false);
+  const handleAuthChange = (newSession) => {
+    setSession(newSession);
+    if (newSession) {
+      setProfile(newSession.user);
+    } else {
+      setProfile(null);
     }
+    setLoading(false);
+  };
+
+  const handleLogout = () => {
+    clearAdminToken();
+    handleAuthChange(null);
   };
 
   if (loading) {
     return (
       <div className="flex items-center justify-center h-screen bg-slate-900 text-white">
         <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-white"></div>
-        <span className="ml-4 text-xl font-medium">Verifying Admin Access...</span>
+        <span className="ml-4 text-xl font-medium">Initializing Admin Interface...</span>
       </div>
     );
   }
@@ -74,10 +73,10 @@ function App() {
       <div className="min-h-screen bg-slate-50">
         <Routes>
           {!session ? (
-            <Route path="*" element={<AdminLogin error={authError} />} />
+            <Route path="*" element={<AdminLogin />} />
           ) : (
             <>
-              <Route path="/" element={<Dashboard profile={profile} onLogout={() => supabase.auth.signOut()} />} />
+              <Route path="/" element={<Dashboard profile={profile} onLogout={handleLogout} />} />
               <Route path="/trigger" element={<TriggerPanel />} />
               <Route path="*" element={<Navigate to="/" />} />
             </>

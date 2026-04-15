@@ -4,11 +4,44 @@ const axios = require('axios');
 const db = require('../models/db');
 const { authMiddleware } = require('../middleware/auth');
 const supabase = require('../models/supabase');
+const jwt = require('jsonwebtoken');
 
 const router = express.Router();
 
 const API_URL = process.env.API_URL || 'http://localhost:3001';
 const INTERNAL_SERVICE_KEY = process.env.INTERNAL_SERVICE_KEY;
+
+// =====================================================
+// POST /api/admin/login
+// Fixed credential-based login for admin
+// =====================================================
+router.post('/login', async (req, res) => {
+  try {
+    const { email, password } = req.body;
+    
+    // Fixed credentials from env
+    const expectedEmail = process.env.ADMIN_EMAIL || 'gigcare@admin.com';
+    const expectedPassword = process.env.ADMIN_PASSWORD || 'Admin123@';
+
+    if (email === expectedEmail && password === expectedPassword) {
+      // Create a dummy profile object for the token
+      const profile = { id: 'admin-fixed-id', email, role: 'admin', full_name: 'System Admin' };
+      
+      const token = jwt.sign(
+        { user_id: profile.id, email: profile.email, role: profile.role },
+        process.env.JWT_SECRET || 'fallback-super-secret-key',
+        { expiresIn: '12h' }
+      );
+      
+      return res.json({ data: { token, profile } });
+    }
+
+    return res.status(401).json({ error: 'Invalid admin credentials', code: 'UNAUTHORIZED' });
+  } catch (err) {
+    console.error('Admin login error:', err);
+    res.status(500).json({ error: 'Login failed', code: 'LOGIN_ERROR' });
+  }
+});
 
 // =====================================================
 // POST /api/admin/trigger-event

@@ -1,37 +1,35 @@
 // apps/admin/src/pages/AdminLogin.jsx
 import React, { useState } from 'react';
-import { supabase } from '../supabaseClient';
+import { apiClient } from '../services/api';
+import { setAdminToken } from '../utils/auth';
 
 export default function AdminLogin({ error: authError }) {
   const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
-  const [message, setMessage] = useState('');
   const [error, setError] = useState(authError || '');
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError('');
-    setMessage('');
 
-    if (!email || !email.includes('@')) {
-      setError('Please enter a valid administrator email');
+    if (!email || !password) {
+      setError('Please enter your admin credentials');
       return;
     }
 
     try {
       setLoading(true);
-      const { error: authError } = await supabase.auth.signInWithOtp({
-        email,
-        options: {
-          emailRedirectTo: 'http://localhost:3013',
-        },
-      });
-
-      if (authError) throw authError;
-      setMessage('Magic link sent! Please check your admin inbox.');
+      const res = await apiClient.post('/admin/login', { email, password });
+      
+      const { token } = res.data.data;
+      setAdminToken(token);
+      
+      // Force reload to apply session
+      window.location.href = '/';
     } catch (err) {
       console.error('Admin login error:', err);
-      setError(err.message || 'Failed to send admin login link.');
+      setError(err.response?.data?.error || 'Invalid credentials.');
     } finally {
       setLoading(false);
     }
@@ -55,39 +53,46 @@ export default function AdminLogin({ error: authError }) {
           <div>
             <label className="block text-sm font-medium text-slate-300 mb-2">Admin Email</label>
             <input
-              type="email"
+              type="text"
               value={email}
               onChange={(e) => setEmail(e.target.value.toLowerCase())}
-              placeholder="admin@gigcare.com"
+              placeholder="gigcare@admin.com"
+              className="w-full px-4 py-4 bg-slate-800 border border-slate-700 rounded-xl text-white focus:ring-2 focus:ring-indigo-500 outline-none transition-all placeholder:text-slate-600"
+              required
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-slate-300 mb-2">Password</label>
+            <input
+              type="password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              placeholder="••••••••"
               className="w-full px-4 py-4 bg-slate-800 border border-slate-700 rounded-xl text-white focus:ring-2 focus:ring-indigo-500 outline-none transition-all placeholder:text-slate-600"
               required
             />
           </div>
 
           {(error || authError) && (
-            <div className="p-4 bg-red-500/10 border border-red-500/20 rounded-xl text-sm text-red-400 font-medium">
+            <div className="p-4 bg-red-500/10 border border-red-500/20 rounded-xl text-sm text-red-400 font-medium text-center">
               {error || authError}
-            </div>
-          )}
-
-          {message && (
-            <div className="p-4 bg-emerald-500/10 border border-emerald-500/20 rounded-xl text-sm text-emerald-400 font-medium">
-              {message}
             </div>
           )}
 
           <button
             type="submit"
             disabled={loading}
-            className="w-full px-6 py-4 bg-indigo-600 rounded-xl text-white font-bold text-lg hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all transform hover:scale-[1.01] active:scale-[0.99] shadow-lg shadow-indigo-900/20"
+            className="w-full px-6 py-4 bg-indigo-600 rounded-xl text-white font-bold text-lg hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all shadow-lg shadow-indigo-900/20"
           >
-            {loading ? 'Processing...' : 'Verify Access'}
+            {loading ? 'Authenticating...' : 'Secure Login'}
           </button>
         </form>
 
-        <p className="text-xs text-center text-slate-500 mt-10 uppercase tracking-widest font-semibold">
-          Secure Administrative Gateway
-        </p>
+        <div className="mt-8 pt-6 border-t border-slate-800 text-center">
+            <p className="text-xs text-yellow-500/80 font-bold uppercase tracking-wider">
+                Demo Authentication System
+            </p>
+        </div>
       </div>
     </div>
   );

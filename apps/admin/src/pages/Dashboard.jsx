@@ -2,7 +2,6 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { apiClient } from '../services/api';
-import { supabase } from '../supabaseClient';
 
 export default function Dashboard({ profile, onLogout }) {
   const navigate = useNavigate();
@@ -12,29 +11,17 @@ export default function Dashboard({ profile, onLogout }) {
 
   useEffect(() => {
     fetchData();
-    // Real-time claims subscription
-    const channel = supabase
-      .channel('schema-db-changes')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'claims' }, () => fetchData())
-      .subscribe();
-
-    return () => supabase.removeChannel(channel);
+    // Refresh data every 30 seconds to replace realtime socket
+    const interval = setInterval(() => fetchData(), 30000);
+    return () => clearInterval(interval);
   }, []);
 
   const fetchData = async () => {
     try {
-      // 1. Fetch Metrics from API (complex logic preserved in backend)
       const dashRes = await apiClient.get('/admin/dashboard');
-      setDashboard(dashRes.data.data);
-
-      // 2. Fetch Claims directly from Supabase (faster, join with profiles)
-      const { data: claimsData } = await supabase
-        .from('claims')
-        .select('*, profiles(full_name)')
-        .order('created_at', { ascending: false })
-        .limit(20);
-      
-      setClaims(claimsData || []);
+      const data = dashRes.data.data;
+      setDashboard(data);
+      setClaims(data.recent_claims || []);
     } catch (err) {
       console.error('Dashboard data fetch error:', err.message);
     } finally {
