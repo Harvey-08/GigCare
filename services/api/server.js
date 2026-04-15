@@ -43,13 +43,13 @@ app.use((req, res, next) => {
 // =====================================================
 // ROUTES
 // =====================================================
-app.use('/api/auth', require('./routes/auth'));
-app.use('/api/zones', require('./routes/zones'));
-app.use('/api/premiums', require('./routes/premiums'));
-app.use('/api/policies', require('./routes/policies'));
-app.use('/api/claims', require('./routes/claims'));
-app.use('/api/admin', require('./routes/admin'));
-app.use('/api/webhooks', require('./routes/webhooks'));
+app.use('/auth', require('./routes/auth'));
+app.use('/zones', require('./routes/zones'));
+app.use('/premiums', require('./routes/premiums'));
+app.use('/policies', require('./routes/policies'));
+app.use('/claims', require('./routes/claims'));
+app.use('/admin', require('./routes/admin'));
+app.use('/webhooks', require('./routes/webhooks'));
 
 // =====================================================
 // HEALTH CHECK

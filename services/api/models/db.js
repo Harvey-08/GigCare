@@ -20,6 +20,24 @@ const getProfile = async (id) => {
   return await supabase.from('profiles').select('*').eq('id', id).single();
 };
 
+const getProfileByEmail = async (email) => {
+  const { data, error } = await supabase.from('profiles').select('*').eq('email', email).maybeSingle();
+  return data;
+};
+
+const getProfileByEmailOrPhone = async (email, phone) => {
+  const { data, error } = await supabase
+    .from('profiles')
+    .select('*')
+    .or(`email.eq.${email},phone.eq.${phone}`)
+    .maybeSingle();
+  return data;
+};
+
+const createProfile = async (profile) => {
+  return await supabase.from('profiles').insert(profile).select().single();
+};
+
 const updateProfile = async (id, updates) => {
   return await supabase.from('profiles').update(updates).eq('id', id).select().single();
 };
@@ -100,6 +118,9 @@ const createTriggerEvent = async (zone_id, trigger_type, trigger_value, severity
 
 module.exports = {
   getProfile,
+  getProfileByEmail,
+  getProfileByEmailOrPhone,
+  createProfile,
   updateProfile,
   getZones,
   getZone,

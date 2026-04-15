@@ -1,17 +1,17 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { supabase } from '../supabaseClient';
 import { apiClient } from '../services/api';
+import { setToken } from '../utils/auth';
 
 export default function Register() {
   const navigate = useNavigate();
-  const [step, setStep] = useState(1); // 1: Info, 2: Platform/Zone, 3: Success
+  const [step, setStep] = useState(1); // 1: Info, 2: Platform/Zone, 3: OTP Verify
   const [formData, setFormData] = useState({
     email: '',
     name: '',
     phone: '',
     platform: 'ZOMATO',
-    zone_id: '', // Initialize empty to force selection/detection
+    zone_id: '',
   });
   const [zones, setZones] = useState([]);
   const [isLocating, setIsLocating] = useState(false);
@@ -19,7 +19,9 @@ export default function Register() {
   const [coords, setCoords] = useState(null);
   const [locationName, setLocationName] = useState('');
   const [loading, setLoading] = useState(false);
+  const [otp, setOtp] = useState('');
   const [error, setError] = useState('');
+  const [requestEmail, setRequestEmail] = useState('');
 
   const PLATFORMS = ['ZOMATO', 'SWIGGY'];
 
@@ -107,39 +109,55 @@ export default function Register() {
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError('');
-    
+
     if (locationStatus !== 'success' || !formData.zone_id) {
       setError('Live location is required to proceed. Please click Detect.');
       return;
     }
-    
-    setLoading(true);
 
+    setLoading(true);
     try {
-      const { error: authError } = await supabase.auth.signInWithOtp({
-        email: formData.email,
-        options: {
-          emailRedirectTo: 'http://localhost:3010',
-          data: {
-            full_name: formData.name,
-            name: formData.name,
-            phone: formData.phone.startsWith('+91') ? formData.phone : `+91${formData.phone}`,
-            phone_number: formData.phone.startsWith('+91') ? formData.phone : `+91${formData.phone}`,
-            role: 'WORKER',
-            platform: formData.platform,
-            zone_id: formData.zone_id,
-            latitude: coords?.latitude,
-            longitude: coords?.longitude,
-            locationVerified: locationStatus === 'success'
-          }
-        },
+      await apiClient.post('/auth/register', {
+        email: formData.email.trim().toLowerCase(),
+        name: formData.name.trim(),
+        phone: formData.phone.trim().startsWith('+91') ? formData.phone.trim() : `+91${formData.phone.trim()}`,
+        platform: formData.platform,
+        zone_id: formData.zone_id,
+        latitude: coords?.latitude,
+        longitude: coords?.longitude,
       });
 
-      if (authError) throw authError;
+      setRequestEmail(formData.email.trim().toLowerCase());
       setStep(3);
     } catch (err) {
       console.error('Registration error:', err);
-      setError(err.message || 'Registration failed');
+      setError(err.response?.data?.error || 'Registration failed. Please try again.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleVerifyOtp = async (e) => {
+    e.preventDefault();
+    setError('');
+
+    if (!otp) {
+      setError('Please enter the OTP sent to your email.');
+      return;
+    }
+
+    setLoading(true);
+    try {
+      const { data } = await apiClient.post('/auth/verify-otp', {
+        email: requestEmail,
+        otp: otp.trim(),
+      });
+
+      setToken(data.data.token);
+      window.location.href = '/';
+    } catch (err) {
+      console.error('OTP verification error:', err);
+      setError(err.response?.data?.error || 'Invalid OTP. Please try again.');
     } finally {
       setLoading(false);
     }
@@ -148,23 +166,50 @@ export default function Register() {
   if (step === 3) {
     return (
       <div className="min-h-screen bg-indigo-900 flex items-center justify-center p-4">
-        <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full p-8 text-center">
-          <div className="w-16 h-16 bg-green-100 text-green-600 rounded-full flex items-center justify-center mx-auto mb-6">
-            <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2-2v10a2 2 0 002 2z" />
-            </svg>
+        <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full p-10">
+          <div className="mb-8 text-center">
+            <h1 className="text-3xl font-bold text-gray-900 mb-2">Verify Your Email</h1>
+            <p className="text-gray-500">
+              Enter the OTP sent to <span className="font-semibold text-indigo-600">{requestEmail}</span>
+            </p>
           </div>
-          <h2 className="text-2xl font-bold text-gray-900 mb-2">Check your email!</h2>
-          <p className="text-gray-600 mb-6">
-            We've sent a magic link to <span className="font-semibold text-indigo-600">{formData.email}</span>. 
-            Click the link to complete your registration.
-          </p>
-          <button
-            onClick={() => navigate('/login')}
-            className="text-indigo-600 font-medium hover:underline"
-          >
-            Ready to log in?
-          </button>
+
+          <form onSubmit={handleVerifyOtp} className="space-y-6">
+            <div>
+              <label className="block text-sm font-semibold text-gray-700 mb-2">OTP Code</label>
+              <input
+                type="text"
+                value={otp}
+                onChange={(e) => setOtp(e.target.value)}
+                placeholder="123456"
+                maxLength={6}
+                className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none transition-all"
+                required
+              />
+            </div>
+
+            {error && (
+              <div className="p-4 bg-red-50 border border-red-100 rounded-xl text-sm text-red-600 font-medium">
+                {error}
+              </div>
+            )}
+
+            <button
+              type="submit"
+              disabled={loading}
+              className="w-full px-6 py-4 bg-indigo-600 rounded-xl text-white font-bold hover:bg-indigo-700 disabled:opacity-50 transition-all shadow-lg"
+            >
+              {loading ? 'Verifying OTP...' : 'Verify and Continue'}
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setStep(2)}
+              className="w-full text-center text-gray-500 font-medium hover:text-indigo-600 transition-colors"
+            >
+              Back to details
+            </button>
+          </form>
         </div>
       </div>
     );

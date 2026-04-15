@@ -1,11 +1,9 @@
 // services/api/middleware/auth.js
-// JWT middleware - Person A
+// JWT middleware for custom email OTP auth
 
+const jwt = require('jsonwebtoken');
 const supabase = require('../models/supabase');
 
-// =====================================================
-// AUTH MIDDLEWARE: Verify Supabase JWT and Role
-// =====================================================
 const authMiddleware = (requiredRole = null) => async (req, res, next) => {
   const token = req.headers.authorization?.split(' ')[1];
 
@@ -17,18 +15,22 @@ const authMiddleware = (requiredRole = null) => async (req, res, next) => {
   }
 
   try {
-    // 1. Verify token with Supabase
-    const { data: { user }, error: authError } = await supabase.auth.getUser(token);
-
-    if (authError || !user) {
-      throw new Error('Invalid token');
+    const secret = process.env.JWT_SECRET;
+    if (!secret) {
+      throw new Error('JWT_SECRET is not configured');
     }
 
-    // 2. Fetch profile to check role
+    const payload = jwt.verify(token, secret);
+    const userId = payload.sub || payload.user_id;
+
+    if (!userId) {
+      throw new Error('Invalid token payload');
+    }
+
     const { data: profile, error: profileError } = await supabase
       .from('profiles')
       .select('*')
-      .eq('id', user.id)
+      .eq('id', userId)
       .single();
 
     if (profileError || !profile) {
@@ -38,7 +40,6 @@ const authMiddleware = (requiredRole = null) => async (req, res, next) => {
       });
     }
 
-    // 3. Check role if required
     if (requiredRole && profile.role !== requiredRole) {
       return res.status(403).json({
         error: 'Insufficient permissions',
@@ -46,14 +47,12 @@ const authMiddleware = (requiredRole = null) => async (req, res, next) => {
       });
     }
 
-    // Attach user and profile to request
-    req.user = { 
-      ...user, 
+    req.user = {
+      user_id: userId,
       role: profile.role,
-      user_id: user.id, // Primary ID for DB queries now
-      profile 
+      profile,
     };
-    
+
     next();
   } catch (error) {
     return res.status(401).json({

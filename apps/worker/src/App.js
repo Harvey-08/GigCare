@@ -1,7 +1,6 @@
 // apps/worker/src/App.js
 import React, { useState, useEffect } from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
-import { supabase } from './supabaseClient';
 import Splash from './pages/Splash';
 import Register from './pages/Register';
 import Login from './pages/Login';
@@ -9,6 +8,8 @@ import Home from './pages/Home';
 import PoliciesList from './pages/PoliciesList';
 import PolicyPurchase from './pages/PolicyPurchase';
 import ClaimDetail from './pages/ClaimDetail';
+import { apiClient } from './services/api';
+import { getToken, clearToken } from './utils/auth';
 
 function App() {
   const [session, setSession] = useState(null);
@@ -16,59 +17,32 @@ function App() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    // 1. Initial session check
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setSession(session);
-      if (session) fetchProfile(session.user.id);
-      else setLoading(false);
-    });
+    const token = getToken();
+    if (!token) {
+      setLoading(false);
+      return;
+    }
 
-    // 2. Listen for auth changes
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-      setSession(session);
-      if (session) fetchProfile(session.user.id);
-      else {
-        setProfile(null);
-        setLoading(false);
-      }
-    });
-
-    return () => subscription.unsubscribe();
+    fetchProfile();
   }, []);
 
   const handleLogout = async () => {
-    setLoading(true);
-    try {
-      await supabase.auth.signOut();
-    } catch (err) {
-      console.error('Logout error:', err);
-    } finally {
-      setSession(null);
-      setProfile(null);
-      setLoading(false);
-    }
+    clearToken();
+    setSession(null);
+    setProfile(null);
+    setLoading(false);
   };
 
-  const fetchProfile = async (userId) => {
+  const fetchProfile = async () => {
     try {
-      const { data, error } = await supabase
-        .from('profiles')
-        .select('*')
-        .eq('id', userId)
-        .single();
-      
-      if (error) {
-        if (error.code === 'PGRST116') {
-          console.warn('Profile not found for session, logging out...');
-          handleLogout();
-          return;
-        }
-        throw error;
-      }
-      
-      setProfile(data);
+      const { data } = await apiClient.get('/auth/me');
+      setProfile(data.data);
+      setSession({ user: { id: data.data.id, email: data.data.email } });
     } catch (err) {
-      console.error('Error fetching profile:', err.message);
+      console.error('Error fetching profile:', err);
+      clearToken();
+      setSession(null);
+      setProfile(null);
     } finally {
       setLoading(false);
     }
@@ -96,7 +70,6 @@ function App() {
             </>
           ) : (
             <>
-              {/* If logged in but no profile (trigger failed or registration incomplete), stay on a complete-profile screen or just Home */}
               <Route path="/" element={<Home profile={profile} session={session} onLogout={handleLogout} />} />
               <Route path="/policies" element={<PoliciesList profile={profile} onLogout={handleLogout} />} />
               <Route path="/buy-policy" element={<PolicyPurchase profile={profile} onLogout={handleLogout} />} />

@@ -1,14 +1,13 @@
 const request = require('supertest');
-const express = require('express');
 
-// Mock database for testing
 jest.mock('./models/db', () => ({
-  query: jest.fn(),
-  createWorker: jest.fn(),
-  getWorker: jest.fn(),
+  getProfileByEmailOrPhone: jest.fn(),
+  getProfileByEmail: jest.fn(),
+  createProfile: jest.fn(),
 }));
 
 const app = require('./server');
+const db = require('./models/db');
 
 describe('Auth API', () => {
   beforeEach(() => {
@@ -16,88 +15,68 @@ describe('Auth API', () => {
   });
 
   describe('POST /api/auth/register', () => {
-    it('should register a new worker successfully', async () => {
-      const mockWorker = {
-        worker_id: 'w-test-123',
-        name: 'Test Worker',
-        phone: '9999999999',
-        platform: 'ZOMATO',
-        zone_id: 'zone_01'
-      };
-
-      // Mock database responses
-      require('./models/db').query
-        .mockResolvedValueOnce({ rows: [] }) // Phone check
-        .mockResolvedValueOnce({ rows: [{ zone_id: 'zone_01' }] }); // Zone check
-      require('./models/db').createWorker.mockResolvedValue({ rows: [mockWorker] });
+    it('should send an OTP to a new registration email', async () => {
+      db.getProfileByEmailOrPhone.mockResolvedValue(null);
 
       const response = await request(app)
         .post('/api/auth/register')
         .send({
-          phone: '9999999999',
+          email: 'worker@example.com',
           name: 'Test Worker',
-          platform: 'ZOMATO',
-          zone_id: 'zone_01'
-        });
-
-      expect(response.status).toBe(201);
-      expect(response.body.data).toHaveProperty('worker_id');
-      expect(response.body.data).toHaveProperty('token');
-    });
-
-    it('should reject duplicate phone numbers', async () => {
-      require('./models/db').query.mockResolvedValue({ rows: [{ worker_id: 'existing' }] });
-
-      const response = await request(app)
-        .post('/api/auth/register')
-        .send({
           phone: '9999999999',
-          name: 'Test Worker',
           platform: 'ZOMATO',
-          zone_id: 'zone_01'
-        });
-
-      expect(response.status).toBe(409);
-      expect(response.body.code).toBe('PHONE_EXISTS');
-    });
-  });
-
-  describe('POST /api/auth/admin-login', () => {
-    it('should login admin successfully', async () => {
-      const mockAdmin = {
-        admin_id: 'admin-001',
-        name: 'Admin User',
-        email: 'admin@gigcare.com',
-        phone: '9876543210',
-        role: 'ADMIN',
-        permissions: ['read', 'write', 'admin']
-      };
-
-      require('./models/db').query.mockResolvedValue({ rows: [mockAdmin] });
-
-      const response = await request(app)
-        .post('/api/auth/admin-login')
-        .send({
-          phone: '9876543210',
-          otp: '123456'
+          zone_id: 'zone_01',
+          latitude: 12.97,
+          longitude: 77.59,
         });
 
       expect(response.status).toBe(200);
-      expect(response.body.data).toHaveProperty('admin_id');
-      expect(response.body.data).toHaveProperty('token');
-      expect(response.body.data.role).toBe('ADMIN');
+      expect(response.body.data).toEqual({ email: 'worker@example.com' });
+      expect(response.body.message).toMatch(/OTP sent/);
     });
 
-    it('should reject invalid OTP', async () => {
+    it('should reject duplicate registration emails or phone numbers', async () => {
+      db.getProfileByEmailOrPhone.mockResolvedValue({ id: 'existing-id' });
+
       const response = await request(app)
-        .post('/api/auth/admin-login')
+        .post('/api/auth/register')
         .send({
-          phone: '9876543210',
-          otp: 'wrong'
+          email: 'worker@example.com',
+          name: 'Test Worker',
+          phone: '9999999999',
+          platform: 'ZOMATO',
+          zone_id: 'zone_01',
+          latitude: 12.97,
+          longitude: 77.59,
         });
 
-      expect(response.status).toBe(401);
-      expect(response.body.code).toBe('INVALID_OTP');
+      expect(response.status).toBe(409);
+      expect(response.body.code).toBe('USER_EXISTS');
+    });
+  });
+
+  describe('POST /api/auth/login', () => {
+    it('should send an OTP when the user exists', async () => {
+      db.getProfileByEmail.mockResolvedValue({ id: 'user-1', email: 'worker@example.com' });
+
+      const response = await request(app)
+        .post('/api/auth/login')
+        .send({ email: 'worker@example.com' });
+
+      expect(response.status).toBe(200);
+      expect(response.body.data).toEqual({ email: 'worker@example.com' });
+      expect(response.body.message).toMatch(/OTP sent/);
+    });
+
+    it('should reject an unknown email address', async () => {
+      db.getProfileByEmail.mockResolvedValue(null);
+
+      const response = await request(app)
+        .post('/api/auth/login')
+        .send({ email: 'unknown@example.com' });
+
+      expect(response.status).toBe(404);
+      expect(response.body.code).toBe('USER_NOT_FOUND');
     });
   });
 });
