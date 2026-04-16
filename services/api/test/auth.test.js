@@ -1,13 +1,33 @@
 const request = require('supertest');
 
-jest.mock('./models/db', () => ({
+jest.mock('../models/db', () => ({
   getProfileByEmailOrPhone: jest.fn(),
   getProfileByEmail: jest.fn(),
   createProfile: jest.fn(),
 }));
 
-const app = require('./server');
-const db = require('./models/db');
+jest.mock('../models/supabase', () => ({
+  auth: {
+    getUser: jest.fn(),
+  },
+  from: jest.fn(() => ({
+    select: jest.fn().mockReturnThis(),
+    eq: jest.fn().mockReturnThis(),
+    maybeSingle: jest.fn(),
+    single: jest.fn(),
+    insert: jest.fn().mockReturnThis(),
+    upsert: jest.fn().mockReturnThis(),
+    update: jest.fn().mockReturnThis(),
+    order: jest.fn().mockReturnThis(),
+    limit: jest.fn().mockReturnThis(),
+    lte: jest.fn().mockReturnThis(),
+    gte: jest.fn().mockReturnThis(),
+    not: jest.fn().mockReturnThis(),
+  })),
+}));
+
+const app = require('../server');
+const db = require('../models/db');
 
 describe('Auth API', () => {
   beforeEach(() => {

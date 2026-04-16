@@ -65,10 +65,46 @@ const createPolicy = async (user_id, tier, premium, max_payout, week_start, week
 };
 
 const activatePolicy = async (policy_id, payment_id) => {
-  return await supabase.from('policies').update({
-    status: 'ACTIVE',
-    razorpay_payment_id: payment_id
-  }).eq('policy_id', policy_id).select().single();
+  const variants = [
+    {
+      status: 'ACTIVE',
+      razorpay_payment_id: payment_id,
+      updated_at: new Date().toISOString(),
+    },
+    {
+      status: 'ACTIVE',
+      updated_at: new Date().toISOString(),
+    },
+    {
+      status: 'ACTIVE',
+      razorpay_payment_id: payment_id,
+    },
+    {
+      status: 'ACTIVE',
+    },
+  ];
+
+  const keyColumns = ['policy_id', 'id'];
+  let lastError = null;
+
+  for (const keyColumn of keyColumns) {
+    for (const payload of variants) {
+      const result = await supabase
+        .from('policies')
+        .update(payload)
+        .eq(keyColumn, policy_id)
+        .select()
+        .single();
+
+      if (!result.error) {
+        return result;
+      }
+
+      lastError = result.error;
+    }
+  }
+
+  return { data: null, error: lastError };
 };
 
 const getPoliciesForUser = async (user_id) => {
@@ -86,6 +122,24 @@ const createClaim = async (policy_id, user_id, event_id, trigger_type, payout, t
     trust_score,
     status
   }).select().single();
+};
+
+const updateClaimStatus = async (claim_id, status, payout_id = null) => {
+  const updates = {
+    status,
+    updated_at: new Date().toISOString()
+  };
+
+  if (payout_id) {
+    updates.razorpay_payout_id = payout_id;
+  }
+
+  return await supabase
+    .from('claims')
+    .update(updates)
+    .eq('claim_id', claim_id)
+    .select()
+    .single();
 };
 
 const getClaimsForUser = async (user_id) => {
@@ -125,8 +179,10 @@ module.exports = {
   getZones,
   getZone,
   createPolicy,
+  activatePolicy,
   getPoliciesForUser,
   createClaim,
+  updateClaimStatus,
   getClaimsForUser,
   getActivePoliciesInZone,
   createTriggerEvent,

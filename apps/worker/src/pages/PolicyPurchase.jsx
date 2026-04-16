@@ -7,6 +7,7 @@ export default function PolicyPurchase({ profile, onLogout }) {
   const navigate = useNavigate();
   const [premium, setPremium] = useState(null);
   const [zones, setZones] = useState([]);
+  const [cityZones, setCityZones] = useState([]);
   const [selectedZone, setSelectedZone] = useState(profile?.zone_id || 'zone_01');
   const [selectedTier, setSelectedTier] = useState(null);
   const [loading, setLoading] = useState(false);
@@ -26,7 +27,20 @@ export default function PolicyPurchase({ profile, onLogout }) {
   const fetchZones = async () => {
     try {
       const res = await apiClient.get('/zones');
-      setZones(res.data.data || []);
+      const allZones = res.data.data || [];
+      setZones(allZones);
+
+      const profileZone = allZones.find((zone) => zone.zone_id === profile?.zone_id);
+      const currentCity = profileZone?.city;
+      const filteredZones = currentCity
+        ? allZones.filter((zone) => zone.city === currentCity)
+        : allZones;
+
+      setCityZones(filteredZones);
+
+      if (filteredZones.length > 0 && !filteredZones.find((zone) => zone.zone_id === selectedZone)) {
+        setSelectedZone(filteredZones[0].zone_id);
+      }
     } catch (err) {
       console.error('Failed to fetch zones:', err.message);
     }
@@ -71,7 +85,10 @@ export default function PolicyPurchase({ profile, onLogout }) {
         coverage_tier: tier,
       });
 
-      const policyId = policyRes.data.data.id;
+      const policyId = policyRes.data?.data?.policy_id || policyRes.data?.data?.id;
+      if (!policyId) {
+        throw new Error('Policy ID missing from purchase response');
+      }
 
       // Step 2: Simulate Razorpay payment / activation
       await apiClient.post(`/policies/${policyId}/activate`);
@@ -91,7 +108,7 @@ export default function PolicyPurchase({ profile, onLogout }) {
     PREMIUM: { color: 'from-purple-500 to-purple-600', triggers: 3, maxPayout: 1800 },
   };
 
-  const zone = zones.find((z) => z.zone_id === selectedZone);
+  const zone = cityZones.find((z) => z.zone_id === selectedZone) || zones.find((z) => z.zone_id === selectedZone);
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -112,8 +129,11 @@ export default function PolicyPurchase({ profile, onLogout }) {
           <label className="block text-sm font-semibold text-gray-700 mb-3">
             Select Your Zone
           </label>
+          {zone?.city && (
+            <p className="text-xs text-gray-500 mb-3">Showing zones in your city: {zone.city}</p>
+          )}
           <div className="grid grid-cols-2 gap-3">
-            {zones.map((z) => (
+            {cityZones.map((z) => (
               <button
                 key={z.zone_id}
                 onClick={() => setSelectedZone(z.zone_id)}

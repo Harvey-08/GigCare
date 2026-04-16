@@ -15,16 +15,42 @@ const authMiddleware = (requiredRole = null) => async (req, res, next) => {
   }
 
   try {
+    let userId = null;
+    let decodedPayload = null;
     const secret = process.env.JWT_SECRET;
-    if (!secret) {
-      throw new Error('JWT_SECRET is not configured');
+
+    if (secret) {
+      try {
+        decodedPayload = jwt.verify(token, secret);
+        userId = decodedPayload.sub || decodedPayload.user_id;
+      } catch (jwtError) {
+        // Fallback to Supabase token validation to support admin app sessions.
+      }
     }
 
-    const payload = jwt.verify(token, secret);
-    const userId = payload.sub || payload.user_id;
+    if (!userId) {
+      const { data: authData, error: authError } = await supabase.auth.getUser(token);
+      if (!authError && authData?.user?.id) {
+        userId = authData.user.id;
+      }
+    }
 
     if (!userId) {
       throw new Error('Invalid token payload');
+    }
+
+    if (requiredRole === 'admin' && decodedPayload?.role === 'admin') {
+      req.user = {
+        user_id: userId,
+        role: 'admin',
+        profile: {
+          id: userId,
+          email: decodedPayload.email,
+          role: 'admin',
+          full_name: decodedPayload.full_name || 'System Admin',
+        },
+      };
+      return next();
     }
 
     const { data: profile, error: profileError } = await supabase

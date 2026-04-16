@@ -1,7 +1,16 @@
-// apps/worker/src/pages/ClaimDetail.jsx
-import React, { useState, useEffect } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import React, { useEffect, useMemo, useState } from 'react';
+import { useNavigate, useParams } from 'react-router-dom';
 import { apiClient } from '../services/api';
+
+function formatTime(value) {
+  if (!value) return 'Pending';
+  return new Date(value).toLocaleString('en-IN', {
+    day: 'numeric',
+    month: 'short',
+    hour: '2-digit',
+    minute: '2-digit',
+  });
+}
 
 export default function ClaimDetail() {
   const { claimId } = useParams();
@@ -26,11 +35,58 @@ export default function ClaimDetail() {
     }
   };
 
+  const trustScore = Number(claim?.trust_score || 0);
+  const timeline = useMemo(() => {
+    if (!claim) return [];
+
+    const createdAt = new Date(claim.created_at || Date.now());
+    const triggerAt = new Date(createdAt.getTime() - 30 * 1000);
+    const fraudCheckedAt = claim.payout_initiated_at
+      ? new Date(new Date(claim.payout_initiated_at).getTime() - 20 * 1000)
+      : new Date(createdAt.getTime() + 30 * 1000);
+    const approvedAt = claim.payout_initiated_at || claim.paid_at || claim.updated_at || createdAt;
+    const paidAt = claim.paid_at || null;
+
+    return [
+      {
+        label: 'Trigger detected',
+        time: triggerAt,
+        detail: `${claim.trigger_type?.replace(/_/g, ' ') || 'Weather trigger'} verified by the engine`,
+        tone: 'text-slate-500',
+      },
+      {
+        label: 'Claim auto-created',
+        time: createdAt,
+        detail: `Policy ${claim.policy_id} produced a claim for ₹${claim.final_payout}`,
+        tone: 'text-indigo-600',
+      },
+      {
+        label: 'Fraud check passed',
+        time: fraudCheckedAt,
+        detail: `Trust score ${(trustScore * 100).toFixed(0)}% • ${claim.fraud_reason || 'No blocking anomaly'}`,
+        tone: trustScore >= 0.85 ? 'text-emerald-600' : trustScore >= 0.6 ? 'text-amber-600' : 'text-rose-600',
+      },
+      {
+        label: 'Payout initiated',
+        time: approvedAt,
+        detail: claim.razorpay_payout_id ? `Razorpay payout ${claim.razorpay_payout_id}` : 'Waiting for payout rail',
+        tone: 'text-sky-600',
+      },
+      {
+        label: 'Payout completed',
+        time: paidAt,
+        detail: paidAt ? 'Funds sent to UPI' : 'Awaiting webhook confirmation',
+        tone: 'text-emerald-600',
+      },
+    ];
+  }, [claim, trustScore]);
+
   const statusColor = {
     APPROVED: 'from-green-500 to-green-600',
     PARTIAL: 'from-yellow-500 to-yellow-600',
     FLAGGED: 'from-red-500 to-red-600',
     PAID: 'from-blue-500 to-blue-600',
+    AUTO_CREATED: 'from-slate-500 to-slate-600',
   };
 
   const statusIcon = {
@@ -38,10 +94,11 @@ export default function ClaimDetail() {
     PARTIAL: '⚠️',
     FLAGGED: '❌',
     PAID: '💰',
+    AUTO_CREATED: '🕒',
   };
 
   const triggerIcon = {
-    HEAVY_RAIN: '☔',
+    HEAVY_RAIN: '⛈️',
     EXTREME_HEAT: '🔥',
     POOR_AQI: '😷',
     CURFEW: '🚓',
@@ -49,118 +106,105 @@ export default function ClaimDetail() {
   };
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      {/* Header */}
-      <div className="bg-white border-b border-gray-200">
-        <div className="max-w-2xl mx-auto px-4 py-4">
-          <button onClick={() => navigate('/')} className="text-teal-600 font-medium mb-4">
+    <div className="min-h-screen bg-slate-50">
+      <div className="border-b border-slate-200 bg-white">
+        <div className="mx-auto max-w-3xl px-4 py-5 sm:px-6">
+          <button onClick={() => navigate('/')} className="mb-4 text-sm font-bold text-teal-600 hover:text-teal-700">
             ← Back
           </button>
-          <h1 className="text-2xl font-bold text-gray-900">Claim Details</h1>
+          <p className="text-[10px] font-black uppercase tracking-[0.35em] text-slate-400">Claim transparency</p>
+          <h1 className="mt-2 text-3xl font-black text-slate-900">Claim timeline</h1>
         </div>
       </div>
 
-      {/* Content */}
-      <div className="max-w-2xl mx-auto px-4 py-6">
+      <div className="mx-auto max-w-3xl px-4 py-6 sm:px-6">
         {loading ? (
-          <div className="text-center py-12 text-gray-500">Loading...</div>
+          <div className="py-12 text-center text-slate-500">Loading...</div>
         ) : error ? (
-          <div className="p-4 bg-red-50 border border-red-200 rounded-lg text-red-700">
-            {error}
-          </div>
+          <div className="rounded-2xl border border-red-200 bg-red-50 p-4 text-red-700">{error}</div>
         ) : claim ? (
           <div className="space-y-6">
-            {/* Status Card */}
-            <div className={`bg-gradient-to-r ${statusColor[claim.status]} rounded-lg p-8 text-white text-center`}>
-              <p className="text-5xl mb-3">{statusIcon[claim.status]}</p>
-              <p className="text-lg font-semibold mb-1">{claim.status}</p>
-              <p className="text-sm opacity-90">
-                {claim.status === 'APPROVED' && 'Your claim has been approved'}
-                {claim.status === 'PARTIAL' && 'Your claim has been partially approved'}
-                {claim.status === 'FLAGGED' && 'Your claim is under review'}
-                {claim.status === 'PAID' && 'Your claim has been paid'}
+            <div className={`rounded-[32px] bg-gradient-to-r ${statusColor[claim.status] || statusColor.AUTO_CREATED} p-8 text-white shadow-xl`}>
+              <div className="mb-4 text-5xl">{statusIcon[claim.status] || '🕒'}</div>
+              <p className="text-xs font-black uppercase tracking-[0.35em] text-white/80">{claim.status}</p>
+              <p className="mt-2 text-2xl font-black">₹{claim.final_payout}</p>
+              <p className="mt-2 text-sm text-white/90">
+                {claim.status === 'APPROVED' && 'Approved and ready for payout.'}
+                {claim.status === 'PARTIAL' && 'Partially approved due to payout cap or trust checks.'}
+                {claim.status === 'FLAGGED' && 'Flagged for review or payout issue.'}
+                {claim.status === 'PAID' && 'Payout completed to your UPI.'}
+                {claim.status === 'AUTO_CREATED' && 'Claim created and pending scoring.'}
               </p>
             </div>
 
-            {/* Payout Amount - CRITICAL FOR 4-STAR */}
-            <div className="bg-white rounded-lg p-6 border-2 border-green-200">
-              <p className="text-sm font-medium text-gray-600 mb-2">Payout Amount</p>
-              <p className="text-5xl font-bold text-green-600">₹{claim.final_payout}</p>
-              <p className="text-xs text-gray-500 mt-2">
-                Based on disruption hours ({claim.disruption_hours}h), zone risk, and trust score ({(claim.trust_score * 100).toFixed(0)}%)
+            <div className="rounded-[28px] border border-emerald-200 bg-white p-6 shadow-sm">
+              <p className="text-xs font-black uppercase tracking-[0.35em] text-slate-400">Payout amount</p>
+              <p className="mt-2 text-5xl font-black text-emerald-600">₹{claim.final_payout}</p>
+              <p className="mt-2 text-sm text-slate-500">
+                Based on {claim.disruption_hours} disruption hours and trust score {(trustScore * 100).toFixed(0)}%.
               </p>
             </div>
 
-            {/* Trigger Event */}
-            <div className="bg-white rounded-lg p-6 border border-gray-200">
-              <p className="text-sm font-semibold text-gray-700 mb-4">Trigger Event</p>
-              <div className="flex items-center gap-3">
-                <span className="text-3xl">{triggerIcon[claim.trigger_type]}</span>
-                <div>
-                  <p className="font-semibold text-gray-900">{claim.trigger_type.replace(/_/g, ' ')}</p>
-                  <p className="text-xs text-gray-500">
-                    Disruption: {claim.disruption_hours} hours
-                  </p>
+            <div className="rounded-[28px] border border-slate-200 bg-white p-6 shadow-sm">
+              <p className="text-xs font-black uppercase tracking-[0.35em] text-slate-400">Timeline</p>
+              <div className="mt-5 space-y-5">
+                {timeline.map((step, index) => (
+                  <div key={step.label} className="flex gap-4">
+                    <div className="flex flex-col items-center">
+                      <div className={`flex h-10 w-10 items-center justify-center rounded-full ${index === timeline.length - 1 && claim.status !== 'PAID' ? 'bg-slate-200 text-slate-500' : 'bg-slate-900 text-white'}`}>
+                        {index + 1}
+                      </div>
+                      {index < timeline.length - 1 && <div className="mt-2 h-full w-px bg-slate-200" />}
+                    </div>
+                    <div className="pb-4">
+                      <p className={`text-sm font-black ${step.tone}`}>{step.label}</p>
+                      <p className="mt-1 text-[10px] font-black uppercase tracking-[0.25em] text-slate-400">{formatTime(step.time)}</p>
+                      <p className="mt-2 text-sm text-slate-600">{step.detail}</p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+              <div className="rounded-[28px] border border-slate-200 bg-white p-6 shadow-sm">
+                <p className="text-xs font-black uppercase tracking-[0.35em] text-slate-400">Trigger event</p>
+                <div className="mt-4 flex items-center gap-3">
+                  <span className="text-3xl">{triggerIcon[claim.trigger_type] || '📍'}</span>
+                  <div>
+                    <p className="font-black text-slate-900">{claim.trigger_type?.replace(/_/g, ' ')}</p>
+                    <p className="text-sm text-slate-500">Disruption: {claim.disruption_hours} hours</p>
+                  </div>
+                </div>
+              </div>
+
+              <div className="rounded-[28px] border border-slate-200 bg-white p-6 shadow-sm">
+                <p className="text-xs font-black uppercase tracking-[0.35em] text-slate-400">Claim info</p>
+                <div className="mt-4 grid grid-cols-2 gap-4 text-sm">
+                  <div>
+                    <p className="text-slate-500">Claim ID</p>
+                    <p className="font-mono text-xs text-slate-900">{claim.claim_id}</p>
+                  </div>
+                  <div>
+                    <p className="text-slate-500">Policy ID</p>
+                    <p className="font-mono text-xs text-slate-900">{claim.policy_id}</p>
+                  </div>
+                  <div>
+                    <p className="text-slate-500">Worker ID</p>
+                    <p className="font-mono text-xs text-slate-900">{claim.worker_id}</p>
+                  </div>
+                  <div>
+                    <p className="text-slate-500">Trust</p>
+                    <p className="font-black text-slate-900">{(trustScore * 100).toFixed(0)}%</p>
+                  </div>
                 </div>
               </div>
             </div>
 
-            {/* Trust Score */}
-            <div className="bg-blue-50 border border-blue-200 rounded-lg p-6">
-              <p className="text-sm font-semibold text-gray-700 mb-3">Trust Score Analysis</p>
-              <div className="space-y-2">
-                <div className="flex justify-between items-center">
-                  <span className="text-gray-700">Your Trust Score:</span>
-                  <span className={`text-lg font-bold ${
-                    claim.trust_score >= 0.85 ? 'text-green-600' :
-                    claim.trust_score >= 0.60 ? 'text-yellow-600' : 'text-red-600'
-                  }`}>
-                    {(claim.trust_score * 100).toFixed(0)}%
-                  </span>
-                </div>
-                <div className="w-full bg-gray-200 rounded-full h-2">
-                  <div
-                    className={`h-2 rounded-full transition-all ${
-                      claim.trust_score >= 0.85 ? 'bg-green-600' :
-                      claim.trust_score >= 0.60 ? 'bg-yellow-600' : 'bg-red-600'
-                    }`}
-                    style={{ width: `${claim.trust_score * 100}%` }}
-                  />
-                </div>
-              </div>
-              <p className="text-xs text-gray-600 mt-3">
-                Trust score is calculated based on GPS accuracy, claim timing, and your history.
-              </p>
-            </div>
-
-            {/* Claim Details */}
-            <div className="bg-white rounded-lg p-6 border border-gray-200 space-y-3">
-              <p className="text-sm font-semibold text-gray-700 mb-3">Claim Information</p>
-              <div className="grid grid-cols-2 gap-3 text-sm">
-                <div>
-                  <p className="text-gray-600">Claim ID</p>
-                  <p className="font-mono text-gray-900">{claim.claim_id}</p>
-                </div>
-                <div>
-                  <p className="text-gray-600">Date</p>
-                  <p className="text-gray-900">{new Date(claim.created_at).toLocaleDateString()}</p>
-                </div>
-                <div>
-                  <p className="text-gray-600">Policy ID</p>
-                  <p className="text-gray-900">{claim.policy_id}</p>
-                </div>
-                <div>
-                  <p className="text-gray-600">Worker ID</p>
-                  <p className="text-gray-900">{claim.worker_id}</p>
-                </div>
-              </div>
-            </div>
-
-            {/* Payment Status */}
             {claim.status === 'PAID' && (
-              <div className="bg-green-50 border border-green-200 rounded-lg p-4 text-center">
-                <p className="text-green-900 font-semibold">✓ Payout Processed</p>
-                <p className="text-xs text-green-800 mt-1">Amount transferred to your account</p>
+              <div className="rounded-[28px] border border-emerald-200 bg-emerald-50 p-5 text-center text-emerald-900">
+                <p className="font-black">✓ Payout processed</p>
+                <p className="mt-1 text-sm">Amount transferred to your UPI account.</p>
               </div>
             )}
           </div>

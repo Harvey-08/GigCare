@@ -1,28 +1,60 @@
-// apps/worker/src/pages/Home.jsx
-import React, { useState, useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { apiClient } from '../services/api';
-// import { supabase } from '../supabaseClient'; // No longer hitting DB directly
+
+function MetricCard({ label, value, note, accent }) {
+  return (
+    <div className="rounded-[28px] border border-slate-200 bg-white p-5 shadow-sm">
+      <p className="text-[10px] font-black uppercase tracking-[0.3em] text-slate-400">{label}</p>
+      <p className={`mt-2 text-2xl font-black ${accent}`}>{value}</p>
+      <p className="mt-1 text-xs font-medium text-slate-500">{note}</p>
+    </div>
+  );
+}
 
 export default function Home({ profile, session, onLogout }) {
   const navigate = useNavigate();
   const [policies, setPolicies] = useState([]);
   const [claims, setClaims] = useState([]);
+  const [incomeRecovery, setIncomeRecovery] = useState(null);
+  const [eligibility, setEligibility] = useState(null);
+  const [zoneStatus, setZoneStatus] = useState(null);
+  const [forecast, setForecast] = useState(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    if (session) fetchData();
+    if (session) {
+      fetchData();
+    }
   }, [session]);
 
   const fetchData = async () => {
     try {
       setLoading(true);
-      
-      const { data: policiesRes } = await apiClient.get(`/policies/worker/${profile?.id || session?.user?.id}`);
-      const { data: claimsRes } = await apiClient.get(`/claims/worker/${profile?.id || session?.user?.id}`);
+      const workerId = profile?.id || session?.user?.id;
 
-      setPolicies(policiesRes.data || []);
-      setClaims(claimsRes.data || []);
+      const [policiesRes, claimsRes] = await Promise.all([
+        apiClient.get(`/policies/worker/${workerId}`),
+        apiClient.get(`/claims/worker/${workerId}`),
+      ]);
+
+      const policiesData = policiesRes.data.data || [];
+      const activePolicy = policiesData.find((policy) => policy.status === 'ACTIVE');
+      const zoneId = profile?.zone_id || activePolicy?.zone_id || policiesData[0]?.zone_id;
+
+      const [recoveryRes, eligibilityRes, zoneStatusRes, forecastRes] = await Promise.all([
+        apiClient.get(`/workers/${workerId}/income-recovery`),
+        apiClient.get(`/workers/${workerId}/eligibility`),
+        zoneId ? apiClient.get(`/zones/${zoneId}/status`) : Promise.resolve({ data: { data: null } }),
+        zoneId ? apiClient.get(`/zones/${zoneId}/forecast`) : Promise.resolve({ data: { data: null } }),
+      ]);
+
+      setPolicies(policiesData);
+      setClaims(claimsRes.data.data || []);
+      setIncomeRecovery(recoveryRes.data.data || null);
+      setEligibility(eligibilityRes.data.data || null);
+      setZoneStatus(zoneStatusRes.data.data || null);
+      setForecast(forecastRes.data.data || null);
     } catch (err) {
       console.error('Failed to fetch data:', err.message);
     } finally {
@@ -30,139 +62,205 @@ export default function Home({ profile, session, onLogout }) {
     }
   };
 
-  const activePolicy = policies.find((p) => p.status === 'ACTIVE');
-  const recentClaims = claims.slice(0, 3);
-
-  const statusColor = {
-    APPROVED: 'bg-emerald-50 border-emerald-100 text-emerald-900',
-    PARTIAL: 'bg-amber-50 border-amber-100 text-amber-900',
-    FLAGGED: 'bg-rose-50 border-rose-100 text-rose-900',
-    PAID: 'bg-indigo-50 border-indigo-100 text-indigo-900',
-    AUTO_CREATED: 'bg-slate-50 border-slate-100 text-slate-900',
-  };
+  const activePolicy = policies.find((policy) => policy.status === 'ACTIVE');
+  const recentClaims = claims.slice(0, 5);
+  const daysRemaining = activePolicy
+    ? Math.max(0, Math.ceil((new Date(activePolicy.week_end) - new Date()) / (1000 * 60 * 60 * 24)))
+    : null;
 
   const statusBadge = {
-    APPROVED: 'px-2 py-0.5 bg-emerald-100 text-emerald-700 text-[10px] font-bold uppercase rounded',
-    PARTIAL: 'px-2 py-0.5 bg-amber-100 text-amber-700 text-[10px] font-bold uppercase rounded',
-    FLAGGED: 'px-2 py-0.5 bg-rose-100 text-rose-700 text-[10px] font-bold uppercase rounded',
-    PAID: 'px-2 py-0.5 bg-indigo-100 text-indigo-700 text-[10px] font-bold uppercase rounded',
-    AUTO_CREATED: 'px-2 py-0.5 bg-slate-100 text-slate-700 text-[10px] font-bold uppercase rounded',
+    APPROVED: 'bg-emerald-100 text-emerald-700',
+    PARTIAL: 'bg-amber-100 text-amber-700',
+    FLAGGED: 'bg-rose-100 text-rose-700',
+    PAID: 'bg-indigo-100 text-indigo-700',
+    AUTO_CREATED: 'bg-slate-100 text-slate-700',
   };
 
   return (
-    <div className="min-h-screen bg-[#F8FAFC]">
-      {/* Header */}
-      <div className="bg-white border-b border-gray-100 sticky top-0 z-10 shadow-sm">
-        <div className="max-w-2xl mx-auto px-6 py-4 flex items-center justify-between">
+    <div className="min-h-screen bg-[#F8FAFC] text-slate-900">
+      <div className="sticky top-0 z-10 border-b border-white/60 bg-white/90 backdrop-blur-xl shadow-sm">
+        <div className="mx-auto flex max-w-6xl items-center justify-between px-6 py-4">
           <div>
-            <h1 className="text-xl font-black text-indigo-600 tracking-tight">GIGCARE</h1>
-            <p className="text-sm font-medium text-slate-500">
-              {profile?.full_name || session?.user?.email}
-            </p>
+            <h1 className="text-xl font-black tracking-tight text-indigo-700">GIGCARE</h1>
+            <p className="text-sm font-medium text-slate-500">{profile?.full_name || session?.user?.email}</p>
           </div>
-          <button
-            onClick={onLogout}
-            className="text-xs font-bold text-slate-400 hover:text-rose-500 transition-colors uppercase tracking-wider"
-          >
-            Sign Out
-          </button>
+          <div className="flex items-center gap-4">
+            <button
+              onClick={() => navigate('/policies')}
+              className="rounded-xl border border-slate-200 bg-white px-4 py-2 text-xs font-black uppercase tracking-[0.2em] text-slate-600 transition-colors hover:border-indigo-200 hover:text-indigo-700"
+            >
+              Policies
+            </button>
+            <button
+              onClick={onLogout}
+              className="rounded-xl bg-slate-900 px-4 py-2 text-xs font-black uppercase tracking-[0.2em] text-white transition-colors hover:bg-rose-600"
+            >
+              Sign Out
+            </button>
+          </div>
         </div>
       </div>
 
-      <div className="max-w-2xl mx-auto px-6 py-8 space-y-8">
-        {/* Active Policy */}
+      <div className="mx-auto max-w-6xl space-y-8 px-6 py-8">
+        {zoneStatus?.locked && (
+          <div className="rounded-[28px] border border-amber-200 bg-amber-50 p-5 text-amber-900 shadow-sm">
+            <p className="text-[10px] font-black uppercase tracking-[0.3em] text-amber-700">Enrollment lock active</p>
+            <p className="mt-2 text-sm font-medium">{zoneStatus.reason}</p>
+          </div>
+        )}
+
         {activePolicy ? (
-          <div className="bg-gradient-to-br from-indigo-600 to-violet-700 rounded-3xl p-8 text-white shadow-xl shadow-indigo-100">
-            <div className="flex items-start justify-between mb-6">
+          <div className="rounded-[36px] bg-gradient-to-br from-indigo-600 via-indigo-700 to-violet-800 p-8 text-white shadow-xl shadow-indigo-100">
+            <div className="flex flex-col gap-6 lg:flex-row lg:items-start lg:justify-between">
               <div>
-                <p className="text-indigo-100 text-xs font-bold uppercase tracking-widest mb-1">Active Coverage</p>
+                <p className="text-indigo-100 text-[10px] font-black uppercase tracking-[0.35em] mb-2">Active Coverage</p>
                 <p className="text-4xl font-black">₹{activePolicy.premium_paid}<span className="text-lg font-normal opacity-60">/wk</span></p>
+                <p className="mt-3 max-w-xl text-sm text-indigo-100/90">{daysRemaining !== null ? `${daysRemaining} days left on your current protection.` : 'Your current weekly protection is active.'}</p>
               </div>
-              <div className="px-3 py-1 bg-white/20 rounded-full text-[10px] font-black uppercase tracking-widest">
-                {activePolicy.coverage_tier}
-              </div>
-            </div>
-            <div className="grid grid-cols-2 gap-4 pt-4 border-t border-white/10 text-sm">
-              <div>
-                <p className="text-white/60 text-[10px] font-bold uppercase mb-1">Max Payout</p>
-                <p className="font-bold">₹{activePolicy.max_payout}</p>
-              </div>
-              <div>
-                <p className="text-white/60 text-[10px] font-bold uppercase mb-1">Valid Until</p>
-                <p className="font-bold">{new Date(activePolicy.week_end).toLocaleDateString()}</p>
+              <div className="grid grid-cols-2 gap-4 rounded-[28px] bg-white/10 p-5 backdrop-blur-sm">
+                <div>
+                  <p className="text-[10px] font-black uppercase tracking-[0.3em] text-indigo-100/70">Max payout</p>
+                  <p className="mt-1 text-xl font-black">₹{activePolicy.max_payout}</p>
+                </div>
+                <div>
+                  <p className="text-[10px] font-black uppercase tracking-[0.3em] text-indigo-100/70">Zone</p>
+                  <p className="mt-1 text-xl font-black">{profile?.zone_id || activePolicy.zone_id || 'Live'}</p>
+                </div>
+                <div>
+                  <p className="text-[10px] font-black uppercase tracking-[0.3em] text-indigo-100/70">Status</p>
+                  <p className="mt-1 text-xl font-black">{activePolicy.status}</p>
+                </div>
+                <div>
+                  <p className="text-[10px] font-black uppercase tracking-[0.3em] text-indigo-100/70">Valid until</p>
+                  <p className="mt-1 text-xl font-black">{new Date(activePolicy.week_end).toLocaleDateString()}</p>
+                </div>
               </div>
             </div>
           </div>
         ) : (
-          <div className="bg-white border border-dashed border-slate-300 rounded-3xl p-10 text-center space-y-4">
-            <div className="w-16 h-16 bg-slate-50 rounded-full flex items-center justify-center mx-auto">
-              <span className="text-2xl">🛡️</span>
-            </div>
-            <div>
-              <h3 className="text-lg font-bold text-slate-900">No active coverage</h3>
-              <p className="text-sm text-slate-500">Protect your earnings from extreme weather.</p>
-            </div>
+          <div className="rounded-[36px] border border-dashed border-slate-300 bg-white p-10 text-center shadow-sm">
+            <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-slate-50 text-2xl">🛡️</div>
+            <h3 className="text-lg font-bold text-slate-900">No active coverage</h3>
+            <p className="mt-2 text-sm text-slate-500">Protect your earnings from weather disruptions.</p>
             <button
               onClick={() => navigate('/buy-policy')}
-              className="px-8 py-3 bg-indigo-600 text-white rounded-xl font-bold hover:bg-indigo-700 transition-all shadow-lg shadow-indigo-100"
+              className="mt-6 rounded-2xl bg-indigo-600 px-6 py-3 text-sm font-black uppercase tracking-[0.2em] text-white transition-colors hover:bg-indigo-700"
             >
               Get Covered Now
             </button>
           </div>
         )}
 
-        {/* Action Grid */}
-        <div className="grid grid-cols-2 gap-4">
-          <button onClick={() => navigate('/policies')} className="bg-white p-6 rounded-3xl border border-slate-100 hover:border-indigo-200 transition-all text-left shadow-sm">
-            <div className="w-10 h-10 bg-blue-50 text-blue-500 rounded-xl flex items-center justify-center mb-4 text-xl">📋</div>
-            <p className="font-bold text-slate-900 mb-1">Policies</p>
-            <p className="text-xs text-slate-400 font-medium">{policies.length} Total</p>
-          </button>
-          <button onClick={() => navigate('/buy-policy')} className="bg-white p-6 rounded-3xl border border-slate-100 hover:border-indigo-200 transition-all text-left shadow-sm">
-            <div className="w-10 h-10 bg-indigo-50 text-indigo-500 rounded-xl flex items-center justify-center mb-4 text-xl">✨</div>
-            <p className="font-bold text-slate-900 mb-1">Purchase</p>
-            <p className="text-xs text-slate-400 font-medium">New Protection</p>
-          </button>
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
+          <MetricCard
+            label="Recovered This Month"
+            value={`₹${incomeRecovery?.total_paid?.toLocaleString?.() || 0}`}
+            note={`${incomeRecovery?.claims_count || 0} paid claims this month`}
+            accent="text-emerald-600"
+          />
+          <MetricCard
+            label="SS Code Progress"
+            value={`${eligibility?.days_worked || 0}/${eligibility?.threshold || 90}`}
+            note={eligibility?.eligible ? 'Eligible for policy purchase' : `${eligibility?.days_remaining || 0} days remaining`}
+            accent={eligibility?.eligible ? 'text-emerald-600' : 'text-amber-600'}
+          />
+          <MetricCard
+            label="Zone Status"
+            value={zoneStatus?.locked ? 'Paused' : 'Active'}
+            note={zoneStatus?.locked ? 'Enrollment is temporarily locked' : `Rain ${zoneStatus?.expected_rain_mm || 0}mm expected`}
+            accent={zoneStatus?.locked ? 'text-amber-600' : 'text-indigo-600'}
+          />
+          <MetricCard
+            label="Forecast Premium"
+            value={`₹${forecast?.premium_estimate || 0}`}
+            note={forecast?.forecast_message || 'Forecast data unavailable'}
+            accent="text-sky-600"
+          />
         </div>
 
-        {/* Claims Section */}
-        <div className="space-y-4">
-          <h2 className="text-xl font-black text-slate-900 tracking-tight">Recent Claims</h2>
-          {loading ? (
-            <div className="flex justify-center py-12"><div className="animate-spin h-8 w-8 border-4 border-indigo-600 border-t-transparent rounded-full"></div></div>
-          ) : claims.length === 0 ? (
-            <div className="bg-white rounded-3xl p-12 text-center border border-slate-100">
-              <p className="text-slate-400 font-medium">No claims reported yet.</p>
+        <div className="grid grid-cols-1 gap-8 xl:grid-cols-[1.2fr_0.8fr]">
+          <div className="rounded-[36px] border border-slate-200 bg-white p-6 shadow-sm">
+            <div className="mb-6 flex items-center justify-between">
+              <div>
+                <p className="text-[10px] font-black uppercase tracking-[0.35em] text-slate-400">Claims history</p>
+                <h2 className="text-2xl font-black tracking-tight text-slate-900">Recent claim activity</h2>
+              </div>
+              <button
+                onClick={() => navigate('/buy-policy')}
+                className="rounded-xl bg-slate-900 px-4 py-2 text-[10px] font-black uppercase tracking-[0.25em] text-white transition-colors hover:bg-indigo-700"
+              >
+                Renew Now
+              </button>
             </div>
-          ) : (
-            <div className="space-y-4">
-              {recentClaims.map((claim) => (
-                <div
-                  key={claim.claim_id}
-                  onClick={() => navigate(`/claims/${claim.claim_id}`)}
-                  className={`group bg-white border border-slate-100 rounded-3xl p-5 cursor-pointer hover:border-indigo-200 transition-all shadow-sm ${statusColor[claim.status]}`}
-                >
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center space-x-4">
-                      <div className="w-12 h-12 bg-white rounded-2xl flex items-center justify-center text-xl shadow-sm border border-slate-50">
-                        {claim.trigger_type === 'HEAVY_RAIN' ? '⛈️' : claim.trigger_type === 'EXTREME_HEAT' ? '🔥' : '😷'}
+
+            {loading ? (
+              <div className="py-10 text-center text-sm font-medium text-slate-400">Loading claim activity...</div>
+            ) : recentClaims.length === 0 ? (
+              <div className="rounded-[28px] border border-dashed border-slate-200 bg-slate-50 p-8 text-center text-sm text-slate-500">
+                No claims reported yet.
+              </div>
+            ) : (
+              <div className="space-y-4">
+                {recentClaims.map((claim) => (
+                  <div
+                    key={claim.claim_id}
+                    onClick={() => navigate(`/claims/${claim.claim_id}`)}
+                    className="cursor-pointer rounded-[28px] border border-slate-100 bg-slate-50 p-5 transition-all hover:border-indigo-200 hover:bg-white"
+                  >
+                    <div className="flex items-start justify-between gap-4">
+                      <div className="flex items-start gap-4">
+                        <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-white text-xl shadow-sm border border-slate-100">
+                          {claim.trigger_type === 'HEAVY_RAIN' ? '⛈️' : claim.trigger_type === 'EXTREME_HEAT' ? '🔥' : '😷'}
+                        </div>
+                        <div>
+                          <p className="font-bold text-slate-900">{claim.trigger_type.replace(/_/g, ' ')}</p>
+                          <p className="mt-1 text-[10px] font-black uppercase tracking-[0.25em] text-slate-400">
+                            {new Date(claim.created_at).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })}
+                          </p>
+                          {claim.fraud_reason && (
+                            <p className="mt-2 max-w-xl text-xs text-slate-500">{claim.fraud_reason}</p>
+                          )}
+                        </div>
                       </div>
-                      <div>
-                        <p className="font-bold text-slate-900">{claim.trigger_type.replace(/_/g, ' ')}</p>
-                        <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">
-                          {new Date(claim.created_at).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })}
-                        </p>
+                      <div className="text-right">
+                        <span className={`rounded-full px-3 py-1 text-[10px] font-black uppercase tracking-[0.2em] ${statusBadge[claim.status]}`}>
+                          {claim.status.replace('_', ' ')}
+                        </span>
+                        <p className="mt-2 text-lg font-black text-slate-900">₹{claim.final_payout}</p>
                       </div>
-                    </div>
-                    <div className="text-right">
-                      <span className={statusBadge[claim.status]}>{claim.status.replace('_', ' ')}</span>
-                      <p className="text-lg font-black text-slate-900 mt-1">₹{claim.final_payout}</p>
                     </div>
                   </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          <div className="space-y-6">
+            <div className="rounded-[36px] bg-slate-950 p-8 text-white shadow-xl shadow-slate-200">
+              <p className="text-[10px] font-black uppercase tracking-[0.35em] text-slate-400">Live zone status</p>
+              <h3 className="mt-2 text-2xl font-black tracking-tight">{zoneStatus?.zone_name || 'Current zone'}</h3>
+              <p className="mt-3 text-sm text-slate-300">{zoneStatus?.reason || 'No current lock. Coverage remains open.'}</p>
+              <div className="mt-6 grid grid-cols-2 gap-4">
+                <div className="rounded-2xl bg-white/10 p-4">
+                  <p className="text-[10px] font-black uppercase tracking-[0.3em] text-slate-400">Rain</p>
+                  <p className="mt-2 text-2xl font-black">{zoneStatus?.expected_rain_mm || 0}mm</p>
                 </div>
-              ))}
+                <div className="rounded-2xl bg-white/10 p-4">
+                  <p className="text-[10px] font-black uppercase tracking-[0.3em] text-slate-400">Risk</p>
+                  <p className="mt-2 text-2xl font-black">{zoneStatus?.zone_risk_score?.toFixed?.(2) || '0.00'}</p>
+                </div>
+              </div>
             </div>
-          )}
+
+            <div className="rounded-[36px] border border-slate-200 bg-white p-6 shadow-sm">
+              <p className="text-[10px] font-black uppercase tracking-[0.35em] text-slate-400">Why GigCare</p>
+              <div className="mt-4 space-y-3 text-sm text-slate-600">
+                <div className="rounded-2xl bg-slate-50 px-4 py-3">Higher trust means faster payouts.</div>
+                <div className="rounded-2xl bg-slate-50 px-4 py-3">Live weather and city risk determine your weekly price.</div>
+                <div className="rounded-2xl bg-slate-50 px-4 py-3">Claims are auto-scored, auto-approved, and auto-paid when safe.</div>
+              </div>
+            </div>
+          </div>
         </div>
       </div>
     </div>

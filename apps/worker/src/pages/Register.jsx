@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { apiClient } from '../services/api';
 import { setToken } from '../utils/auth';
@@ -13,11 +13,11 @@ export default function Register() {
     platform: 'ZOMATO',
     zone_id: '',
   });
-  const [zones, setZones] = useState([]);
   const [isLocating, setIsLocating] = useState(false);
   const [locationStatus, setLocationStatus] = useState('idle'); // idle, detecting, success, error
   const [coords, setCoords] = useState(null);
   const [locationName, setLocationName] = useState('');
+  const [resolvedLocation, setResolvedLocation] = useState(null);
   const [loading, setLoading] = useState(false);
   const [otp, setOtp] = useState('');
   const [error, setError] = useState('');
@@ -25,26 +25,11 @@ export default function Register() {
 
   const PLATFORMS = ['ZOMATO', 'SWIGGY'];
 
-  // Fetch zones on mount
-  useEffect(() => {
-    const fetchZones = async () => {
-      try {
-        const { data } = await apiClient.get('/zones');
-        setZones(data.data || []);
-        if (data.data?.length > 0 && !formData.zone_id) {
-          setFormData(prev => ({ ...prev, zone_id: data.data[0].zone_id }));
-        }
-      } catch (err) {
-        console.error('Failed to fetch zones:', err);
-      }
-    };
-    fetchZones();
-  }, [formData.zone_id]);
-
   const handleDetectLocation = () => {
     setIsLocating(true);
     setLocationStatus('detecting');
     setError('');
+    setResolvedLocation(null);
 
     if (!navigator.geolocation) {
       setError('Geolocation is not supported by your browser');
@@ -57,35 +42,26 @@ export default function Register() {
       (position) => {
         const { latitude, longitude } = position.coords;
         setCoords({ latitude, longitude });
-        setLocationStatus('success');
-        setIsLocating(false);
-        
-        // Snap to nearest zone
-        if (zones.length > 0) {
-          let nearest = zones[0].zone_id;
-          let minDistance = Infinity;
-          for (const z of zones) {
-            if (z.lat && z.lon) {
-              const d = Math.pow(z.lat - latitude, 2) + Math.pow(z.lon - longitude, 2);
-              if (d < minDistance) {
-                minDistance = d;
-                nearest = z.zone_id;
-              }
-            }
-          }
-          setFormData(prev => ({ ...prev, zone_id: nearest }));
-        }
-
-        // Reverse GeoCode to get actual city/area name
-        fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${latitude}&lon=${longitude}`)
-          .then(res => res.json())
-          .then(data => {
-            if (data && data.address) {
-              const area = data.address.city || data.address.town || data.address.suburb || data.address.village || data.address.county || 'Unknown Area';
-              setLocationName(area);
-            }
+        apiClient.get('/zones/resolve', { params: { lat: latitude, lon: longitude } })
+          .then(({ data }) => {
+            const resolved = data.data || {};
+            setResolvedLocation(resolved);
+            setFormData(prev => ({ ...prev, zone_id: resolved.zone_id || prev.zone_id }));
+            setLocationName(
+              resolved.mode === 'SUPPORTED_CITY'
+                ? `${resolved.city_name} • ${resolved.zone_name}`
+                : `${resolved.nearest_city_name || resolved.city || 'Fallback region'} • Fallback`
+            );
+            setLocationStatus('success');
           })
-          .catch(err => console.error('Reverse geocode error:', err));
+          .catch((err) => {
+            console.error('Location resolve error:', err);
+            setError(err.response?.data?.error || 'Unable to resolve your location. Please try again.');
+            setLocationStatus('error');
+          })
+          .finally(() => {
+            setIsLocating(false);
+          });
       },
       (err) => {
         console.error('Geolocation error:', err);
@@ -290,10 +266,17 @@ export default function Register() {
                          locationStatus === 'detecting' ? 'Locating...' : 'Verify Operating Area'}
                       </p>
                       <p className="text-xs text-gray-500">
-                        {locationStatus === 'success' && coords ? (locationName || `Lat: ${coords.latitude.toFixed(5)}, Lng: ${coords.longitude.toFixed(5)}`) : 
-                         locationStatus === 'error' ? 'Please allow GPS access' : 
-                         'Use GPS for precise zone detection'}
+                        {locationStatus === 'success' && coords ? (locationName || `Lat: ${coords.latitude.toFixed(5)}, Lng: ${coords.longitude.toFixed(5)}`) :
+                         locationStatus === 'error' ? 'Please allow GPS access' :
+                         'Use GPS for precise city and zone detection'}
                       </p>
+                      {resolvedLocation && locationStatus === 'success' && (
+                        <p className="text-[11px] text-indigo-500 font-semibold mt-1">
+                          {resolvedLocation.mode === 'SUPPORTED_CITY'
+                            ? `Supported city mode • Premium est. ₹${resolvedLocation.premium_estimate}`
+                            : `Fallback mode • Nearest city: ${resolvedLocation.nearest_city_name} • Premium est. ₹${resolvedLocation.premium_estimate}`}
+                        </p>
+                      )}
                     </div>
                   </div>
                   <button

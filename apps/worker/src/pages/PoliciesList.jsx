@@ -3,7 +3,7 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { apiClient } from '../services/api';
 
-export default function PoliciesList({ worker }) {
+export default function PoliciesList({ profile }) {
   const navigate = useNavigate();
   const [policies, setPolicies] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -15,7 +15,12 @@ export default function PoliciesList({ worker }) {
   const fetchPolicies = async () => {
     try {
       setLoading(true);
-      const res = await apiClient.get(`/policies/worker/${worker?.worker_id}`);
+      if (!profile?.id) {
+        setPolicies([]);
+        return;
+      }
+
+      const res = await apiClient.get(`/policies/worker/${profile.id}`);
       setPolicies(res.data.data || []);
     } catch (err) {
       console.error('Failed to fetch policies:', err.message);

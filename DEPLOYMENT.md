@@ -136,7 +136,7 @@ Expected: "ACTIVE"
 1. Login with phone=9876543210, OTP=123456
 2. See metrics (loss ratio ≈ 0%, claims_today ≈ 0)
 3. Click 🚀 "Fire Trigger Event"
-4. Select: Zone = Whitefield, Trigger = Heavy Rain, Value = 60
+4. Select: City = Bengaluru or another supported city, Trigger = Heavy Rain, Value = 60
 5. Click "Fire"
 Expected: "Event Fired Successfully! Claims Created: X"
 

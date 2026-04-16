@@ -6,7 +6,7 @@ import { apiClient } from '../services/api';
 export default function TriggerPanel() {
   const navigate = useNavigate();
   const [formData, setFormData] = useState({
-    zone_id: 'zone_01',
+    city_id: 'BLR',
     trigger_type: 'HEAVY_RAIN',
     trigger_value: 60,
   });
@@ -14,10 +14,17 @@ export default function TriggerPanel() {
   const [result, setResult] = useState(null);
   const [error, setError] = useState('');
 
-  const ZONES = [
-    { id: 'zone_01', name: 'Koramangala' },
-    { id: 'zone_02', name: 'Whitefield' },
-    { id: 'zone_03', name: 'Indiranagar' },
+  const CITIES = [
+    { id: 'BLR', name: 'Bengaluru' },
+    { id: 'MUM', name: 'Mumbai' },
+    { id: 'DEL', name: 'Delhi NCR' },
+    { id: 'CHN', name: 'Chennai' },
+    { id: 'HYD', name: 'Hyderabad' },
+    { id: 'PUN', name: 'Pune' },
+    { id: 'KOL', name: 'Kolkata' },
+    { id: 'AMD', name: 'Ahmedabad' },
+    { id: 'JAI', name: 'Jaipur' },
+    { id: 'KOC', name: 'Kochi' },
   ];
 
   const TRIGGERS = [
@@ -66,22 +73,22 @@ export default function TriggerPanel() {
             <div className="bg-white rounded-[32px] border border-slate-200 p-8 shadow-sm">
               <form onSubmit={handleFire} className="space-y-8">
                 <div>
-                  <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-4">Select Target Jurisdiction</label>
+                  <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-4">Select Target City</label>
                   <div className="grid grid-cols-1 gap-3">
-                    {ZONES.map((z) => (
+                    {CITIES.map((city) => (
                       <button
-                        key={z.id}
+                        key={city.id}
                         type="button"
-                        onClick={() => setFormData({ ...formData, zone_id: z.id })}
+                        onClick={() => setFormData({ ...formData, city_id: city.id })}
                         className={`px-5 py-4 rounded-2xl border-2 text-left transition-all ${
-                          formData.zone_id === z.id 
+                          formData.city_id === city.id 
                             ? 'border-indigo-600 bg-indigo-50/50 text-indigo-700' 
                             : 'border-slate-50 bg-slate-50/50 text-slate-500 hover:border-slate-200'
                         }`}
                       >
                         <div className="flex items-center justify-between">
-                          <span className="font-bold">{z.name}</span>
-                          {formData.zone_id === z.id && <span className="w-2 h-2 bg-indigo-600 rounded-full"></span>}
+                          <span className="font-bold">{city.name}</span>
+                          {formData.city_id === city.id && <span className="w-2 h-2 bg-indigo-600 rounded-full"></span>}
                         </div>
                       </button>
                     ))}

@@ -19,12 +19,31 @@ router.post('/', authMiddleware('worker'), async (req, res) => {
     }
 
     // Fetch the premium quote
-    const { data: quote } = await supabase
+    let { data: quote, error: quoteError } = await supabase
       .from('premium_quotes')
       .select('*')
       .eq('quote_id', quote_id)
       .eq('user_id', user_id)
-      .single();
+      .maybeSingle();
+
+    if (!quote && quoteError && quoteError.code !== 'PGRST116') {
+      throw quoteError;
+    }
+
+    if (!quote) {
+      const fallbackQuote = await supabase
+        .from('premium_quotes')
+        .select('*')
+        .eq('quote_id', quote_id)
+        .eq('worker_id', user_id)
+        .maybeSingle();
+
+      if (fallbackQuote.error && fallbackQuote.error.code !== 'PGRST116') {
+        throw fallbackQuote.error;
+      }
+
+      quote = fallbackQuote.data;
+    }
 
     if (!quote) return res.status(404).json({ error: 'Quote not found' });
 
@@ -40,7 +59,12 @@ router.post('/', authMiddleware('worker'), async (req, res) => {
 
     if (policyError) throw policyError;
 
-    res.status(201).json({ data: policy });
+    res.status(201).json({
+      data: {
+        ...policy,
+        id: policy?.policy_id || policy?.id,
+      },
+    });
   } catch (err) {
     console.error('Policy creation error:', err);
     res.status(500).json({ error: 'Policy creation failed', code: 'POLICY_CREATION_FAILED' });
@@ -55,21 +79,46 @@ router.post('/:policy_id/activate', authMiddleware('worker'), async (req, res) =
     const { policy_id } = req.params;
     const { user_id } = req.user;
 
-    const { data: policy, error: fetchError } = await db.supabase
+    let { data: policy, error: fetchError } = await db.supabase
       .from('policies')
       .select('*')
       .eq('policy_id', policy_id)
-      .single();
+      .maybeSingle();
 
-    if (fetchError || !policy) {
+    if (
+      !policy &&
+      fetchError &&
+      fetchError.code !== 'PGRST116' &&
+      fetchError.code !== '42703'
+    ) {
+      throw fetchError;
+    }
+
+    if (!policy) {
+      const fallbackPolicy = await db.supabase
+        .from('policies')
+        .select('*')
+        .eq('id', policy_id)
+        .maybeSingle();
+
+      if (fallbackPolicy.error && fallbackPolicy.error.code !== 'PGRST116') {
+        throw fallbackPolicy.error;
+      }
+
+      policy = fallbackPolicy.data;
+    }
+
+    if (!policy) {
       return res.status(404).json({ error: 'Policy not found', code: 'POLICY_NOT_FOUND' });
     }
 
-    if (policy.user_id !== user_id) {
+    const policyOwnerId = policy.user_id || policy.worker_id;
+    if (policyOwnerId !== user_id) {
       return res.status(403).json({ error: 'Forbidden', code: 'FORBIDDEN' });
     }
 
-    const { data: updatedPolicy, error: updateError } = await db.activatePolicy(policy_id, 'demo_payment_id');
+    const targetPolicyId = policy.policy_id || policy.id;
+    const { data: updatedPolicy, error: updateError } = await db.activatePolicy(targetPolicyId, 'demo_payment_id');
 
     if (updateError) {
       throw updateError;

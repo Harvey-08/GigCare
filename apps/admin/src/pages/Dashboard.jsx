@@ -1,27 +1,87 @@
-// apps/admin/src/pages/Dashboard.jsx
-import React, { useState, useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { apiClient } from '../services/api';
+import IndiaCityMap from '../components/IndiaCityMap';
+
+function StatCard({ label, value, note, accent }) {
+  return (
+    <div className="rounded-[28px] border border-slate-200 bg-white p-6 shadow-sm">
+      <p className="text-[10px] font-black uppercase tracking-[0.3em] text-slate-400">{label}</p>
+      <p className={`mt-3 text-3xl font-black ${accent}`}>{value}</p>
+      <p className="mt-2 text-xs font-medium text-slate-500">{note}</p>
+    </div>
+  );
+}
+
+function Donut({ claimsByStatus }) {
+  const entries = Object.entries(claimsByStatus || {});
+  const total = entries.reduce((sum, [, count]) => sum + count, 0) || 1;
+  const palette = ['#2563EB', '#1A7F4B', '#E8960C', '#B91C1C', '#64748B'];
+  let cursor = 0;
+
+  const segments = entries.map(([status, count], index) => {
+    const percentage = (count / total) * 100;
+    const start = cursor;
+    cursor += percentage;
+    return `${palette[index % palette.length]} ${start}% ${cursor}%`;
+  });
+
+  return (
+    <div className="flex flex-col items-center rounded-[28px] border border-slate-200 bg-white p-6 shadow-sm">
+      <div className="h-40 w-40 rounded-full" style={{ background: `conic-gradient(${segments.join(', ')})` }} />
+      <div className="mt-4 text-center">
+        <p className="text-xs font-black uppercase tracking-[0.3em] text-slate-400">Claims by Status</p>
+        <p className="text-2xl font-black text-slate-900">{total} total</p>
+      </div>
+    </div>
+  );
+}
 
 export default function Dashboard({ profile, onLogout }) {
   const navigate = useNavigate();
   const [dashboard, setDashboard] = useState(null);
-  const [claims, setClaims] = useState([]);
+  const [cityMetrics, setCityMetrics] = useState([]);
+  const [fraudRings, setFraudRings] = useState([]);
+  const [eligibilityStats, setEligibilityStats] = useState(null);
+  const [forecast, setForecast] = useState(null);
+  const [heatmap, setHeatmap] = useState([]);
+  const [selectedCityId, setSelectedCityId] = useState('BLR');
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     fetchData();
-    // Refresh data every 30 seconds to replace realtime socket
-    const interval = setInterval(() => fetchData(), 30000);
+    const interval = setInterval(fetchData, 30000);
     return () => clearInterval(interval);
   }, []);
 
   const fetchData = async () => {
     try {
-      const dashRes = await apiClient.get('/admin/dashboard');
-      const data = dashRes.data.data;
-      setDashboard(data);
-      setClaims(data.recent_claims || []);
+      const [dashRes, cityRes, ringsRes, eligibilityRes, forecastRes, heatmapRes] = await Promise.allSettled([
+        apiClient.get('/admin/dashboard'),
+        apiClient.get('/admin/cities/metrics'),
+        apiClient.get('/admin/fraud-rings'),
+        apiClient.get('/admin/eligibility-stats'),
+        apiClient.get('/admin/forecast'),
+        apiClient.get('/zones/heatmap'),
+      ]);
+
+      const nextDashboard = dashRes.status === 'fulfilled' ? (dashRes.value.data.data || null) : null;
+      const nextCityMetrics = cityRes.status === 'fulfilled' ? (cityRes.value.data.data || []) : [];
+      const nextFraudRings = ringsRes.status === 'fulfilled' ? (ringsRes.value.data.data || []) : [];
+      const nextEligibility = eligibilityRes.status === 'fulfilled' ? (eligibilityRes.value.data.data || null) : null;
+      const nextForecast = forecastRes.status === 'fulfilled' ? (forecastRes.value.data.data || null) : null;
+      const nextHeatmap = heatmapRes.status === 'fulfilled' ? (heatmapRes.value.data.data || []) : [];
+
+      setDashboard(nextDashboard);
+      setCityMetrics(nextCityMetrics);
+      setFraudRings(nextFraudRings);
+      setEligibilityStats(nextEligibility);
+      setForecast(nextForecast);
+      setHeatmap(nextHeatmap);
+
+      if (!selectedCityId && nextCityMetrics.length > 0) {
+        setSelectedCityId(nextCityMetrics[0].city_id);
+      }
     } catch (err) {
       console.error('Dashboard data fetch error:', err.message);
     } finally {
@@ -29,130 +89,188 @@ export default function Dashboard({ profile, onLogout }) {
     }
   };
 
-  const statusBadge = {
-    APPROVED: 'bg-emerald-100 text-emerald-700',
-    PARTIAL: 'bg-amber-100 text-amber-700',
-    FLAGGED: 'bg-rose-100 text-rose-700',
-    PAID: 'bg-indigo-100 text-indigo-700',
-    AUTO_CREATED: 'bg-slate-100 text-slate-700',
-  };
+  const selectedCity = cityMetrics.find((city) => city.city_id === selectedCityId) || cityMetrics[0];
+  const selectedHeat = heatmap
+    .filter((zone) => zone.city_id === selectedCity?.city_id || zone.city === selectedCity?.city_name)
+    .slice(0, 18);
+  const claimsByStatus = dashboard?.claims_by_status || {};
 
   return (
-    <div className="min-h-screen bg-[#F1F5F9]">
-      <nav className="bg-slate-900 text-white border-b border-slate-800 sticky top-0 z-20 shadow-lg">
-        <div className="max-w-7xl mx-auto px-6 py-4 flex items-center justify-between">
-          <div className="flex items-center space-x-4">
-            <span className="text-2xl">🛡️</span>
+    <div className="min-h-screen bg-[#F1F5F9] text-slate-900">
+      <nav className="sticky top-0 z-20 border-b border-slate-800 bg-slate-950 text-white shadow-lg">
+        <div className="mx-auto flex max-w-7xl items-center justify-between px-6 py-4">
+          <div className="flex items-center gap-4">
+            <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-white/10 text-2xl">🛡️</div>
             <div>
-              <h1 className="text-lg font-black tracking-tighter uppercase">GigCare Admin</h1>
-              <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest leading-none">Institutional Console</p>
+              <h1 className="text-lg font-black tracking-tight">GigCare Admin</h1>
+              <p className="text-[10px] font-bold uppercase tracking-[0.35em] text-slate-400">Multi-city control room</p>
             </div>
           </div>
-          <div className="flex items-center space-x-6">
-            <div className="text-right hidden sm:block">
-              <p className="text-xs font-bold">{profile?.full_name}</p>
-              <p className="text-[10px] text-indigo-400 font-bold uppercase tracking-wider">System Administrator</p>
+          <div className="flex items-center gap-4">
+            <button
+              onClick={() => navigate('/trigger')}
+              className="rounded-xl border border-indigo-500/40 bg-indigo-600/20 px-4 py-2 text-xs font-black uppercase tracking-[0.25em] text-indigo-200 transition-all hover:bg-indigo-600/40"
+            >
+              Trigger Panel
+            </button>
+            <div className="hidden text-right sm:block">
+              <p className="text-sm font-bold">{profile?.full_name}</p>
+              <p className="text-[10px] font-bold uppercase tracking-[0.3em] text-indigo-300">System Administrator</p>
             </div>
-            <button onClick={onLogout} className="px-4 py-2 bg-slate-800 hover:bg-rose-600 rounded-lg text-xs font-bold transition-all border border-slate-700 hover:border-rose-500">
-              SECURE LOGOUT
+            <button
+              onClick={onLogout}
+              className="rounded-xl border border-slate-700 bg-slate-900 px-4 py-2 text-xs font-black uppercase tracking-[0.25em] transition-all hover:border-rose-500 hover:bg-rose-600"
+            >
+              Secure Logout
             </button>
           </div>
         </div>
       </nav>
 
-      <main className="max-w-7xl mx-auto px-6 py-8">
+      <main className="mx-auto max-w-7xl px-6 py-8">
         {loading && !dashboard ? (
           <div className="flex flex-col items-center justify-center py-24 space-y-4">
-            <div className="animate-spin h-10 w-10 border-4 border-indigo-600 border-t-transparent rounded-full"></div>
-            <p className="text-slate-400 font-bold text-sm uppercase tracking-widest">Compiling Metrics...</p>
+            <div className="h-10 w-10 animate-spin rounded-full border-4 border-indigo-600 border-t-transparent" />
+            <p className="text-xs font-black uppercase tracking-[0.35em] text-slate-400">Compiling metrics...</p>
           </div>
         ) : (
-          <div className="animate-in fade-in duration-500 space-y-8">
-            {/* Stats Grid */}
-            <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
-              {[
-                { label: 'Loss Ratio', val: `${dashboard?.loss_ratio_percent}%`, desc: 'Payouts vs Premiums', color: 'text-indigo-600' },
-                { label: 'Total Premiums', val: `₹${dashboard?.total_premiums_collected?.toLocaleString()}`, desc: 'Active Revenue', color: 'text-emerald-600' },
-                { label: 'Total Payouts', val: `₹${dashboard?.total_payouts?.toLocaleString()}`, desc: 'Disbursed Capital', color: 'text-rose-600' },
-                { label: 'Live Claims', val: claims.length, desc: 'Currently in queue', color: 'text-blue-600' },
-              ].map((stat, i) => (
-                <div key={i} className="bg-white rounded-3xl p-6 border border-slate-200 shadow-sm">
-                  <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">{stat.label}</p>
-                  <p className={`text-3xl font-black ${stat.color} mb-1`}>{stat.val}</p>
-                  <p className="text-[10px] font-medium text-slate-500">{stat.desc}</p>
-                </div>
-              ))}
+          <div className="space-y-8">
+            <div className="grid grid-cols-1 gap-6 md:grid-cols-4">
+              <StatCard label="Loss Ratio" value={`${dashboard?.loss_ratio_percent || 0}%`} note="Payouts vs premiums" accent="text-indigo-600" />
+              <StatCard label="Reserve Pool" value={`₹${(dashboard?.reserve_pool || 0).toLocaleString()}`} note="Unspent protection capital" accent="text-emerald-600" />
+              <StatCard label="Total Premiums" value={`₹${(dashboard?.total_premiums_collected || 0).toLocaleString()}`} note="Active revenue" accent="text-sky-600" />
+              <StatCard label="Total Payouts" value={`₹${(dashboard?.total_payouts || 0).toLocaleString()}`} note="Disbursed capital" accent="text-rose-600" />
             </div>
 
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-              {/* Claims Tracking */}
-              <div className="lg:col-span-2 bg-white rounded-[32px] border border-slate-200 shadow-sm overflow-hidden">
-                <div className="px-8 py-6 border-b border-slate-100 flex items-center justify-between">
-                  <h2 className="font-black text-slate-900 uppercase tracking-tight">Recent Activity</h2>
-                  <div className="flex items-center space-x-2">
-                    <span className="w-2 h-2 bg-indigo-500 rounded-full animate-pulse"></span>
-                    <span className="text-[10px] font-black text-indigo-500 uppercase tracking-widest">Live Updates</span>
+            <div className="grid grid-cols-1 gap-8 xl:grid-cols-[1.2fr_0.8fr]">
+              <div className="rounded-[36px] border border-slate-200 bg-white p-6 shadow-sm">
+                <div className="mb-6 flex items-center justify-between">
+                  <div>
+                    <p className="text-[10px] font-black uppercase tracking-[0.35em] text-slate-400">India city overview</p>
+                    <h2 className="text-2xl font-black tracking-tight text-slate-900">10-city loss map</h2>
+                  </div>
+                  <div className="rounded-full bg-emerald-50 px-3 py-1 text-[10px] font-black uppercase tracking-[0.25em] text-emerald-700">
+                    {cityMetrics.length} cities live
                   </div>
                 </div>
-                <div className="overflow-x-auto">
-                  <table className="w-full text-left">
-                    <thead>
-                      <tr className="bg-slate-50/50">
-                        <th className="px-8 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">Worker</th>
-                        <th className="px-8 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">Event</th>
-                        <th className="px-8 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest text-right">Payout</th>
-                        <th className="px-8 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest text-center">Status</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-slate-50">
-                      {claims.map((claim) => (
-                        <tr key={claim.claim_id} className="hover:bg-slate-50/50 transition-colors group">
-                          <td className="px-8 py-5">
-                            <p className="font-bold text-slate-900 group-hover:text-indigo-600 transition-colors uppercase text-xs">{claim.profiles?.full_name || 'Anonymous'}</p>
-                            <p className="text-[10px] text-slate-400 font-medium">{claim.claim_id.slice(0, 8)}</p>
-                          </td>
-                          <td className="px-8 py-5">
-                            <div className="flex items-center space-x-2">
-                              <span className="text-lg">{claim.trigger_type === 'HEAVY_RAIN' ? '⛈️' : '🔥'}</span>
-                              <span className="text-xs font-bold text-slate-600">{claim.trigger_type.replace('_', ' ')}</span>
-                            </div>
-                          </td>
-                          <td className="px-8 py-5 text-right font-black text-slate-900 text-sm">₹{claim.final_payout}</td>
-                          <td className="px-8 py-5 text-center">
-                            <span className={`px-2 py-1 rounded-full text-[10px] font-black uppercase tracking-tighter ${statusBadge[claim.status]}`}>
-                              {claim.status.replace('_', ' ')}
-                            </span>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
+
+                <div className="grid grid-cols-1 gap-6 lg:grid-cols-[420px_1fr]">
+                  <IndiaCityMap cityMetrics={cityMetrics} selectedCityId={selectedCityId} onCityClick={setSelectedCityId} />
+
+                  <div className="space-y-4">
+                    <div className="rounded-[28px] bg-slate-50 p-5">
+                      <p className="text-[10px] font-black uppercase tracking-[0.3em] text-slate-400">Selected city</p>
+                      <div className="mt-2 flex items-end justify-between">
+                        <div>
+                          <h3 className="text-3xl font-black text-slate-900">{selectedCity?.city_name || 'Bengaluru'}</h3>
+                          <p className="text-sm font-medium text-slate-500">{selectedCity?.state || 'Karnataka'} • {selectedCity?.climate_zone || 'tropical_savanna'}</p>
+                        </div>
+                        <div className="text-right">
+                          <p className="text-[10px] font-black uppercase tracking-[0.3em] text-slate-400">Loss ratio</p>
+                          <p className="text-2xl font-black text-slate-900">{selectedCity?.loss_ratio?.toFixed?.(2) || '0.00'}</p>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="overflow-hidden rounded-[28px] border border-slate-200">
+                      <div className="border-b border-slate-100 bg-slate-50 px-5 py-4">
+                        <p className="text-[10px] font-black uppercase tracking-[0.3em] text-slate-400">City comparison</p>
+                      </div>
+                      <div className="max-h-[420px] overflow-y-auto">
+                        <table className="w-full text-left text-sm">
+                          <thead className="sticky top-0 bg-white">
+                            <tr className="text-[10px] font-black uppercase tracking-[0.28em] text-slate-400">
+                              <th className="px-5 py-4">City</th>
+                              <th className="px-5 py-4">Premium</th>
+                              <th className="px-5 py-4">Claims</th>
+                              <th className="px-5 py-4 text-right">LR</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-slate-100">
+                            {cityMetrics.map((city) => (
+                              <tr
+                                key={city.city_id}
+                                onClick={() => setSelectedCityId(city.city_id)}
+                                className={`cursor-pointer transition-colors ${selectedCityId === city.city_id ? 'bg-indigo-50/60' : 'hover:bg-slate-50'}`}
+                              >
+                                <td className="px-5 py-4">
+                                  <p className="font-bold text-slate-900">{city.city_name}</p>
+                                  <p className="text-[10px] font-bold uppercase tracking-[0.3em] text-slate-400">{city.city_id}</p>
+                                </td>
+                                <td className="px-5 py-4 text-slate-600">{city.premium_range}</td>
+                                <td className="px-5 py-4 text-slate-600">{city.this_week_claims} / {city.total_claims}</td>
+                                <td className="px-5 py-4 text-right font-black">{city.loss_ratio.toFixed(2)}</td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                  </div>
                 </div>
               </div>
 
-              {/* Sidebar Actions */}
               <div className="space-y-6">
-                <div className="bg-indigo-600 rounded-[32px] p-8 text-white shadow-xl shadow-indigo-200">
-                  <h3 className="text-xl font-black mb-2 leading-none uppercase tracking-tight">System Controls</h3>
-                  <p className="text-indigo-100 text-xs mb-8">Execute platform-wide triggers and manual event overrides.</p>
-                  <button onClick={() => navigate('/trigger')} className="w-full py-4 bg-white text-indigo-600 rounded-2xl font-black text-sm uppercase tracking-widest hover:bg-slate-50 transition-all shadow-lg active:scale-[0.98]">
-                    🚀 Launch Trigger Panel
-                  </button>
-                </div>
-                
-                <div className="bg-white rounded-[32px] border border-slate-200 p-8">
-                  <h3 className="font-black text-slate-900 uppercase tracking-tight mb-4">Fraud Indicators</h3>
-                  <div className="space-y-4">
-                    <div className="p-4 bg-slate-50 rounded-2xl flex items-center justify-between">
-                      <span className="text-xs font-bold text-slate-500 uppercase tracking-widest">Active Rings</span>
-                      <span className="text-lg font-black text-slate-900">0</span>
-                    </div>
-                    <div className="p-4 bg-rose-50 rounded-2xl flex items-center justify-between border border-rose-100">
-                      <span className="text-xs font-bold text-rose-600 uppercase tracking-widest">Flagged Claims</span>
-                      <span className="text-lg font-black text-rose-700">{dashboard?.claims_by_status?.['FLAGGED'] || 0}</span>
-                    </div>
+                <Donut claimsByStatus={claimsByStatus} />
+
+                <div className="rounded-[28px] border border-slate-200 bg-white p-6 shadow-sm">
+                  <p className="text-[10px] font-black uppercase tracking-[0.3em] text-slate-400">Fraud rings</p>
+                  <h3 className="mt-2 text-2xl font-black text-slate-900">{fraudRings.length} active rings</h3>
+                  <div className="mt-4 space-y-3">
+                    {fraudRings.length === 0 ? (
+                      <div className="rounded-2xl bg-emerald-50 px-4 py-3 text-sm font-medium text-emerald-800">No active rings detected.</div>
+                    ) : (
+                      fraudRings.slice(0, 4).map((ring, index) => (
+                        <div key={index} className="rounded-2xl border border-slate-100 bg-slate-50 px-4 py-3">
+                          <div className="flex items-center justify-between">
+                            <p className="text-xs font-black uppercase tracking-[0.25em] text-slate-500">Ring {index + 1}</p>
+                            <p className="text-xs font-black text-rose-600">{ring.ring_size} workers</p>
+                          </div>
+                          <p className="mt-2 text-sm font-medium text-slate-700">{ring.is_cross_city ? 'Cross-city network' : 'Single-city cluster'}</p>
+                        </div>
+                      ))
+                    )}
                   </div>
                 </div>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 gap-6 xl:grid-cols-3">
+              <div className="rounded-[28px] border border-slate-200 bg-white p-6 shadow-sm">
+                <p className="text-[10px] font-black uppercase tracking-[0.3em] text-slate-400">Eligibility pool</p>
+                <p className="mt-2 text-3xl font-black text-slate-900">{eligibilityStats?.eligible || 0}</p>
+                <p className="text-sm text-slate-500">Eligible workers</p>
+                <div className="mt-4 grid grid-cols-3 gap-3 text-center text-xs font-black uppercase tracking-[0.25em] text-slate-500">
+                  <div className="rounded-2xl bg-emerald-50 px-3 py-4 text-emerald-700">{eligibilityStats?.eligible || 0}</div>
+                  <div className="rounded-2xl bg-amber-50 px-3 py-4 text-amber-700">{eligibilityStats?.near_threshold || 0}</div>
+                  <div className="rounded-2xl bg-rose-50 px-3 py-4 text-rose-700">{eligibilityStats?.ineligible || 0}</div>
+                </div>
+              </div>
+
+              <div className="rounded-[28px] border border-slate-200 bg-white p-6 shadow-sm">
+                <p className="text-[10px] font-black uppercase tracking-[0.3em] text-slate-400">Next week forecast</p>
+                <p className="mt-2 text-3xl font-black text-slate-900">₹{forecast?.expected_claims_next_week?.toLocaleString() || 0}</p>
+                <p className="text-sm text-slate-500">Projected claims outflow</p>
+                <div className="mt-4 rounded-2xl bg-indigo-50 px-4 py-3 text-xs font-medium text-indigo-800">
+                  ± ₹{forecast?.forecast_delta?.toLocaleString() || 0} based on 7-day payout trend
+                </div>
+              </div>
+
+              <div className="rounded-[28px] border border-slate-200 bg-white p-6 shadow-sm">
+                <p className="text-[10px] font-black uppercase tracking-[0.3em] text-slate-400">Zone heatmap</p>
+                <div className="mt-4 grid grid-cols-6 gap-2">
+                  {selectedHeat.slice(0, 18).map((zone) => (
+                    <div
+                      key={zone.zone_id}
+                      className="aspect-square rounded-xl border border-white shadow-sm"
+                      style={{
+                        backgroundColor: zone.zone_risk_score >= 2 ? '#B91C1C' : zone.zone_risk_score >= 1.4 ? '#E8960C' : '#1A7F4B',
+                      }}
+                      title={`${zone.name} • ${zone.zone_risk_score}`}
+                    />
+                  ))}
+                </div>
+                <p className="mt-4 text-xs font-medium text-slate-500">Selected city zones only. Click another city on the map to update.</p>
               </div>
             </div>
           </div>

@@ -267,7 +267,8 @@ GET /api/claims/:claim_id
 ### Admin
 ```
 POST /api/admin/trigger-event [ADMIN ONLY]
-  { zone_id, trigger_type, trigger_value } → { event_id, claims_created }
+  { zone_id, city_id, trigger_type, trigger_value } → { event_id, claims_created }
+  // city_id lets the API resolve the best active zone in that city
 
 GET /api/admin/dashboard [ADMIN ONLY]
   → { loss_ratio, total_premiums, total_payouts, claims_today, claims_by_status }
