@@ -1,10 +1,20 @@
 // services/api/routes/claims.js
 const express = require('express');
 const db = require('../models/db');
+const claimStore = require('../models/claimStore');
 const { authMiddleware, internalServiceAuth } = require('../middleware/auth');
 const supabase = require('../models/supabase');
 
 const router = express.Router();
+
+function isMissingClaimsTable(error) {
+  return (
+    error &&
+    error.code === 'PGRST205' &&
+    typeof error.message === 'string' &&
+    error.message.includes('public.claims')
+  );
+}
 
 // =====================================
 // POST /api/claims/auto-create
@@ -73,7 +83,17 @@ router.get('/worker/:user_id', authMiddleware('worker'), async (req, res) => {
     }
 
     const { data: claims, error } = await db.getClaimsForUser(user_id);
-    res.json({ data: claims || [] });
+
+    if (error && !isMissingClaimsTable(error)) {
+      throw error;
+    }
+
+    if (error || !claims || claims.length === 0) {
+      const fallbackClaims = claimStore.listFallbackClaimsForUser(user_id);
+      return res.json({ data: fallbackClaims });
+    }
+
+    res.json({ data: claims });
   } catch (err) {
     console.error('Claims fetch error:', err);
     res.status(500).json({ error: 'Failed to fetch claims', code: 'CLAIMS_FETCH_FAILED' });

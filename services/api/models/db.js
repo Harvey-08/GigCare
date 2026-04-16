@@ -21,21 +21,69 @@ const getProfile = async (id) => {
 };
 
 const getProfileByEmail = async (email) => {
-  const { data, error } = await supabase.from('profiles').select('*').eq('email', email).maybeSingle();
-  return data;
-};
+  const normalizedEmail = String(email || '').trim().toLowerCase();
+  if (!normalizedEmail) {
+    return null;
+  }
 
-const getProfileByEmailOrPhone = async (email, phone) => {
   const { data, error } = await supabase
     .from('profiles')
     .select('*')
-    .or(`email.eq.${email},phone.eq.${phone}`)
-    .maybeSingle();
-  return data;
+    .eq('email', normalizedEmail)
+    .limit(1);
+
+  if (error) {
+    throw error;
+  }
+
+  return data?.[0] || null;
+};
+
+const getProfileByEmailOrPhone = async (email, phone) => {
+  const normalizedEmail = String(email || '').trim().toLowerCase();
+  const normalizedPhone = String(phone || '').trim();
+
+  if (normalizedEmail) {
+    const { data, error } = await supabase
+      .from('profiles')
+      .select('*')
+      .eq('email', normalizedEmail)
+      .limit(1);
+
+    if (error) {
+      throw error;
+    }
+
+    if (data?.[0]) {
+      return data[0];
+    }
+  }
+
+  if (!normalizedPhone) {
+    return null;
+  }
+
+  const { data, error } = await supabase
+    .from('profiles')
+    .select('*')
+    .eq('phone', normalizedPhone)
+    .limit(1);
+
+  if (error) {
+    throw error;
+  }
+
+  return data?.[0] || null;
 };
 
 const createProfile = async (profile) => {
-  return await supabase.from('profiles').insert(profile).select().single();
+  const payload = {
+    ...profile,
+    email: String(profile?.email || '').trim().toLowerCase(),
+    phone: String(profile?.phone || '').trim(),
+  };
+
+  return await supabase.from('profiles').insert(payload).select().single();
 };
 
 const updateProfile = async (id, updates) => {

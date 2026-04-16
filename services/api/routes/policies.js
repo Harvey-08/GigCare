@@ -47,6 +47,67 @@ router.post('/', authMiddleware('worker'), async (req, res) => {
 
     if (!quote) return res.status(404).json({ error: 'Quote not found' });
 
+    // Prevent duplicate purchases for the same active/queued coverage window.
+    const hasUserIdColumn = async () => {
+      const result = await supabase
+        .from('policies')
+        .select('*')
+        .eq('user_id', user_id)
+        .in('status', ['ACTIVE', 'PENDING_PAYMENT'])
+        .lte('week_start', quote.week_end)
+        .gte('week_end', quote.week_start)
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      if (result.error && result.error.code === '42703') {
+        return null;
+      }
+
+      if (result.error && result.error.code !== 'PGRST116') {
+        throw result.error;
+      }
+
+      return result.data || null;
+    };
+
+    const hasWorkerIdColumn = async () => {
+      const result = await supabase
+        .from('policies')
+        .select('*')
+        .eq('worker_id', user_id)
+        .in('status', ['ACTIVE', 'PENDING_PAYMENT'])
+        .lte('week_start', quote.week_end)
+        .gte('week_end', quote.week_start)
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      if (result.error && result.error.code !== 'PGRST116') {
+        throw result.error;
+      }
+
+      return result.data || null;
+    };
+
+    let existingPolicy = await hasUserIdColumn();
+    if (!existingPolicy) {
+      existingPolicy = await hasWorkerIdColumn();
+    }
+
+    if (existingPolicy) {
+      return res.status(409).json({
+        error: 'You already have a policy for this period',
+        code: 'POLICY_ALREADY_EXISTS',
+        data: {
+          policy_id: existingPolicy.policy_id || existingPolicy.id,
+          status: existingPolicy.status,
+          week_start: existingPolicy.week_start,
+          week_end: existingPolicy.week_end,
+        },
+      });
+    }
+
     // Create policy
     const { data: policy, error: policyError } = await db.createPolicy(
       user_id,

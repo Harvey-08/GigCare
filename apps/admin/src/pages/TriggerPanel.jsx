@@ -9,6 +9,7 @@ export default function TriggerPanel() {
     city_id: 'BLR',
     trigger_type: 'HEAVY_RAIN',
     trigger_value: 60,
+    reason: '',
   });
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState(null);
@@ -31,6 +32,8 @@ export default function TriggerPanel() {
     { type: 'HEAVY_RAIN', label: '☔ Heavy Rain', unit: 'mm', defaultValue: 60, color: 'border-blue-200 bg-blue-50 text-blue-700' },
     { type: 'EXTREME_HEAT', label: '🔥 Extreme Heat', unit: '°C', defaultValue: 41, color: 'border-orange-200 bg-orange-50 text-orange-700' },
     { type: 'POOR_AQI', label: '😷 Poor AQI', unit: 'AQI Index', defaultValue: 320, color: 'border-slate-200 bg-slate-50 text-slate-700' },
+    { type: 'CURFEW', label: '🚧 Curfew', unit: 'Severity', defaultValue: 1, color: 'border-rose-200 bg-rose-50 text-rose-700' },
+    { type: 'OTHER_REASON', label: '📝 Other Reason', unit: 'Severity', defaultValue: 1, color: 'border-violet-200 bg-violet-50 text-violet-700' },
   ];
 
   const handleFire = async (e) => {
@@ -40,7 +43,11 @@ export default function TriggerPanel() {
     setLoading(true);
 
     try {
-      const response = await apiClient.post('/admin/trigger-event', formData);
+      const payload = {
+        ...formData,
+        reason: formData.trigger_type === 'OTHER_REASON' ? formData.reason : '',
+      };
+      const response = await apiClient.post('/admin/trigger-event', payload);
       setResult(response.data.data);
     } catch (err) {
       setError(err.response?.data?.error || 'Authorization failed. Ensure you are an active Admin.');
@@ -116,13 +123,23 @@ export default function TriggerPanel() {
                       <input
                         type="number"
                         value={formData.trigger_value}
-                        onChange={(e) => setFormData({ ...formData, trigger_value: parseInt(e.target.value) })}
+                        onChange={(e) => setFormData({ ...formData, trigger_value: parseInt(e.target.value || '0', 10) })}
                         className="w-full px-6 py-4 bg-slate-50 border border-slate-200 rounded-2xl font-black text-2xl text-slate-900 focus:ring-4 focus:ring-indigo-500/10 outline-none transition-all"
                       />
                       <span className="absolute right-6 top-1/2 -translate-y-1/2 text-[10px] font-black text-slate-400 uppercase tracking-widest">
                         {currentTrigger?.unit}
                       </span>
                     </div>
+
+                    {formData.trigger_type === 'OTHER_REASON' && (
+                      <textarea
+                        value={formData.reason}
+                        onChange={(e) => setFormData({ ...formData, reason: e.target.value })}
+                        placeholder="Enter custom reason (for audit trail)"
+                        className="w-full mt-3 px-4 py-3 bg-slate-50 border border-slate-200 rounded-2xl text-sm text-slate-900 focus:ring-4 focus:ring-indigo-500/10 outline-none transition-all"
+                        rows={3}
+                      />
+                    )}
                   </div>
                 </div>
 

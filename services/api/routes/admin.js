@@ -3,6 +3,7 @@ const express = require('express');
 const axios = require('axios');
 const { v4: uuidv4 } = require('uuid');
 const db = require('../models/db');
+const claimStore = require('../models/claimStore');
 const { authMiddleware } = require('../middleware/auth');
 const supabase = require('../models/supabase');
 const jwt = require('jsonwebtoken');
@@ -13,6 +14,19 @@ const router = express.Router();
 const API_URL = process.env.API_URL || 'http://localhost:3001';
 const INTERNAL_SERVICE_KEY = process.env.INTERNAL_SERVICE_KEY;
 const FRAUD_SERVICE_URL = process.env.FRAUD_SERVICE_URL || 'http://localhost:5002';
+
+function dedupeClaims(primary = [], secondary = []) {
+  const map = new Map();
+
+  for (const claim of [...primary, ...secondary]) {
+    const key = claim.claim_id || `${claim.policy_id}_${claim.trigger_event_id}_${claim.created_at || ''}`;
+    if (!map.has(key)) {
+      map.set(key, claim);
+    }
+  }
+
+  return Array.from(map.values());
+}
 
 // =====================================================
 // POST /api/admin/login
@@ -52,7 +66,9 @@ router.post('/login', async (req, res) => {
 // =====================================================
 router.post('/trigger-event', authMiddleware('admin'), async (req, res) => {
   try {
-    const { zone_id, city_id, trigger_type, trigger_value } = req.body;
+    const { zone_id, city_id, trigger_type, trigger_value, reason } = req.body;
+
+    const allowedTriggerTypes = ['HEAVY_RAIN', 'EXTREME_HEAT', 'POOR_AQI', 'CURFEW', 'APP_OUTAGE', 'OTHER_REASON'];
 
     if (!trigger_type || trigger_value === undefined || (!zone_id && !city_id)) {
       return res.status(422).json({
@@ -60,6 +76,16 @@ router.post('/trigger-event', authMiddleware('admin'), async (req, res) => {
         code: 'MISSING_FIELDS',
       });
     }
+
+    if (!allowedTriggerTypes.includes(trigger_type)) {
+      return res.status(422).json({
+        error: `Unsupported trigger_type. Allowed: ${allowedTriggerTypes.join(', ')}`,
+        code: 'INVALID_TRIGGER_TYPE',
+      });
+    }
+
+    // Keep frontend-friendly "OTHER_REASON" while persisting enum-safe APP_OUTAGE.
+    const normalizedTriggerType = trigger_type === 'OTHER_REASON' ? 'APP_OUTAGE' : trigger_type;
 
     let targetZoneId = zone_id;
     let targetCityId = city_id || null;
@@ -82,11 +108,20 @@ router.post('/trigger-event', authMiddleware('admin'), async (req, res) => {
     }
 
     // Create event via Supabase
-    const severity = trigger_type === 'HEAVY_RAIN' ? 1.3 : trigger_type === 'POOR_AQI' && trigger_value >= 400 ? 1.5 : 1.0;
+    const severity =
+      normalizedTriggerType === 'HEAVY_RAIN'
+        ? 1.3
+        : normalizedTriggerType === 'POOR_AQI' && trigger_value >= 400
+          ? 1.5
+          : normalizedTriggerType === 'CURFEW'
+            ? 1.4
+            : normalizedTriggerType === 'APP_OUTAGE'
+              ? 1.2
+              : 1.0;
     
     const { data: event, error: eventError } = await db.createTriggerEvent(
       targetZoneId, 
-      trigger_type, 
+      normalizedTriggerType,
       trigger_value, 
       severity
     );
@@ -96,13 +131,14 @@ router.post('/trigger-event', authMiddleware('admin'), async (req, res) => {
     // Call auto-create endpoint internally
     try {
       const claimsRes = await axios.post(`${API_URL}/api/fraud/auto-create`, {
-        zone_id: req.body.zone_id || null,
+        zone_id: targetZoneId,
         city_id: targetCityId,
-        trigger_type,
+        trigger_type: normalizedTriggerType,
         trigger_value,
         disruption_hours: 3,
         severity_factor: severity,
         event_id: event.event_id,
+        reason: reason || null,
       }, {
         headers: { 'x-internal-service-key': INTERNAL_SERVICE_KEY },
       });
@@ -111,6 +147,7 @@ router.post('/trigger-event', authMiddleware('admin'), async (req, res) => {
         data: {
           ...event,
           city_id: targetCityId,
+          zone_id: targetZoneId,
           claims_created: claimsRes.data.data?.length || 0,
         },
         meta: { timestamp: new Date().toISOString() },
@@ -143,13 +180,24 @@ router.get('/dashboard', authMiddleware('admin'), async (req, res) => {
       .from('claims')
       .select('final_payout')
       .eq('status', 'PAID');
-    const totalPayouts = (payoutsData || []).reduce((sum, c) => sum + (c.final_payout || 0), 0);
+
+    const fallbackClaims = claimStore.listFallbackClaims();
+    const fallbackPaidClaims = fallbackClaims.filter((claim) => claim.status === 'PAID');
+    const totalPayouts =
+      (payoutsData || []).reduce((sum, c) => sum + (c.final_payout || 0), 0) +
+      fallbackPaidClaims.reduce((sum, c) => sum + Number(c.final_payout || 0), 0);
 
     // 3. Claims by Status
     const { data: statusData } = await supabase
       .from('claims')
       .select('status');
-    const claimsByStatus = (statusData || []).reduce((acc, c) => {
+
+    const combinedStatusRows = [
+      ...(statusData || []),
+      ...fallbackClaims.map((claim) => ({ status: claim.status })),
+    ];
+
+    const claimsByStatus = combinedStatusRows.reduce((acc, c) => {
       acc[c.status] = (acc[c.status] || 0) + 1;
       return acc;
     }, {});
@@ -161,6 +209,13 @@ router.get('/dashboard', authMiddleware('admin'), async (req, res) => {
       .order('created_at', { ascending: false })
       .limit(10);
 
+    const mergedRecentClaims = dedupeClaims(
+      (recentClaims || []).map((claim) => ({ ...claim, synthetic_fallback: false })),
+      fallbackClaims.map((claim) => ({ ...claim, profiles: claim.profiles || null, synthetic_fallback: true }))
+    )
+      .sort((a, b) => new Date(b.created_at || 0) - new Date(a.created_at || 0))
+      .slice(0, 10);
+
     // 5. Claims Today (last 24h)
     const twentyFourHoursAgo = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
     const { data: claimsTodayData } = await supabase
@@ -168,15 +223,19 @@ router.get('/dashboard', authMiddleware('admin'), async (req, res) => {
       .select('claim_id')
       .gte('created_at', twentyFourHoursAgo);
 
+    const fallbackClaimsTodayCount = fallbackClaims.filter(
+      (claim) => new Date(claim.created_at || 0) >= new Date(twentyFourHoursAgo)
+    ).length;
+
     res.json({
       data: {
         loss_ratio_percent: totalPremiums > 0 ? Math.round((totalPayouts / totalPremiums) * 100) : 0,
         total_premiums_collected: totalPremiums,
         total_payouts: totalPayouts,
         reserve_pool: Math.max(0, totalPremiums - totalPayouts),
-        claims_today: (claimsTodayData || []).length,
+        claims_today: (claimsTodayData || []).length + fallbackClaimsTodayCount,
         claims_by_status: claimsByStatus,
-        recent_claims: recentClaims,
+        recent_claims: mergedRecentClaims,
       },
       meta: { timestamp: new Date().toISOString() },
     });
@@ -342,6 +401,35 @@ router.get('/eligibility-stats', authMiddleware('admin'), async (req, res) => {
       );
     } catch (schemaError) {
       console.warn('Eligibility stats fallback:', schemaError.message);
+
+      const { data: profiles, error: profileError } = await supabase
+        .from('profiles')
+        .select('id, created_at')
+        .eq('role', 'worker');
+
+      if (profileError) {
+        throw profileError;
+      }
+
+      const now = Date.now();
+      stats = (profiles || []).reduce(
+        (acc, profile) => {
+          const createdAt = profile.created_at ? new Date(profile.created_at).getTime() : now;
+          const days = Math.max(0, Math.floor((now - createdAt) / (1000 * 60 * 60 * 24)));
+          const threshold = 90;
+
+          if (days >= threshold) {
+            acc.eligible += 1;
+          } else if (threshold - days <= 15) {
+            acc.near_threshold += 1;
+          } else {
+            acc.ineligible += 1;
+          }
+
+          return acc;
+        },
+        { eligible: 0, near_threshold: 0, ineligible: 0, total: (profiles || []).length }
+      );
     }
 
     res.json({
@@ -366,7 +454,13 @@ router.get('/cities/metrics', authMiddleware('admin'), async (req, res) => {
     ]);
 
     const zones = zonesResult.status === 'fulfilled' && !zonesResult.value.error ? (zonesResult.value.data || []) : [];
-    const claims = claimsResult.status === 'fulfilled' && !claimsResult.value.error ? (claimsResult.value.data || []) : [];
+    const claims = zonesResult.status === 'fulfilled' ? dedupeClaims(
+      claimsResult.status === 'fulfilled' && !claimsResult.value.error ? (claimsResult.value.data || []) : [],
+      claimStore.listFallbackClaims().map((claim) => ({
+        ...claim,
+        zone_id: claim.zone_id || null,
+      }))
+    ) : [];
 
     const zoneGroups = zones.reduce((acc, zone) => {
       const cityName = zone.city || 'Unknown';
@@ -404,6 +498,11 @@ router.get('/cities/metrics', authMiddleware('admin'), async (req, res) => {
       // Real policies aggregation
       const cityActivePolicies = (activePolicies || []).filter(p => cityZoneIds.includes(profileMap[p.user_id]));
       const totalPremiums = cityActivePolicies.reduce((sum, p) => sum + (p.premium_paid || 0), 0);
+      const premiumValues = cityActivePolicies
+        .map((p) => Number(p.premium_paid || 0))
+        .filter((value) => Number.isFinite(value) && value > 0);
+      const minPremium = premiumValues.length ? Math.min(...premiumValues) : null;
+      const maxPremium = premiumValues.length ? Math.max(...premiumValues) : null;
       const totalPayouts = cityClaims.reduce((sum, claim) => sum + Number(claim.final_payout || 0), 0);
 
       const avgRisk = cityZones.length
@@ -424,7 +523,7 @@ router.get('/cities/metrics', authMiddleware('admin'), async (req, res) => {
         total_payouts: totalPayouts,
         total_premiums: totalPremiums,
         loss_ratio: totalPremiums > 0 ? Number((totalPayouts / totalPremiums).toFixed(2)) : 0,
-        premium_range: city.city_id === 'KOC' ? 'Rs.200-225' : city.city_id === 'JAI' ? 'Rs.75-90' : city.city_id === 'MUM' ? 'Rs.185-215' : 'Rs.110-180',
+        premium_range: minPremium !== null ? `Rs.${Math.round(minPremium)}-${Math.round(maxPremium || minPremium)}` : 'No active policies',
       };
     });
 

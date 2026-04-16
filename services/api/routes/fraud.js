@@ -1,6 +1,7 @@
 const express = require('express');
 const supabase = require('../models/supabase');
 const db = require('../models/db');
+const claimStore = require('../models/claimStore');
 const { internalServiceAuth } = require('../middleware/auth');
 const { initiateUpiPayout } = require('../services/payout-service');
 const { CITY_CONFIGS } = require('../config/cities');
@@ -40,7 +41,11 @@ function buildSyntheticClaim(payload) {
     trust_score: payload.trust_score,
     status: payload.status,
     fraud_reason: payload.fraud_reason,
+    zone_id: payload.zone_id || null,
+    city_id: payload.city_id || null,
+    synthetic_fallback: true,
     simulated: true,
+    created_at: new Date().toISOString(),
   };
 }
 
@@ -271,6 +276,8 @@ router.post('/auto-create', internalServiceAuth, async (req, res) => {
         policy_id: policy.policy_id,
         user_id: userId,
         trigger_event_id: event_id,
+        zone_id: policy.profiles?.zone_id || zone_id || null,
+        city_id: city_id || null,
         trigger_type,
         trigger_value,
         disruption_start: req.body.disruption_start || new Date(Date.now() - hours * 60 * 60 * 1000).toISOString(),
@@ -284,6 +291,7 @@ router.post('/auto-create', internalServiceAuth, async (req, res) => {
       };
 
       const claim = await insertClaimCompat(claimPayload);
+      claimStore.upsertFallbackClaim(claim);
 
       if (fraudResult.action === 'APPROVED') {
         try {

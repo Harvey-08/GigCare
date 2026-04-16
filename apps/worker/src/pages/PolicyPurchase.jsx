@@ -150,7 +150,14 @@ export default function PolicyPurchase({ profile, onLogout }) {
       // Success
       navigate('/');
     } catch (err) {
-      setError(err.response?.data?.error || 'Failed to purchase policy');
+      if (err.response?.status === 409 && err.response?.data?.code === 'POLICY_ALREADY_EXISTS') {
+        const existing = err.response?.data?.data;
+        setError(
+          `You already have a ${existing?.status?.toLowerCase() || 'valid'} policy for ${existing?.week_start || 'this period'} to ${existing?.week_end || ''}.`
+        );
+      } else {
+        setError(err.response?.data?.error || 'Failed to purchase policy');
+      }
     } finally {
       setPurchasing(false);
     }
