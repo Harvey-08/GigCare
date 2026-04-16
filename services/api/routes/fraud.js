@@ -3,6 +3,7 @@ const supabase = require('../models/supabase');
 const db = require('../models/db');
 const { internalServiceAuth } = require('../middleware/auth');
 const { initiateUpiPayout } = require('../services/payout-service');
+const { CITY_CONFIGS } = require('../config/cities');
 
 const FRAUD_SERVICE_URL = process.env.FRAUD_SERVICE_URL || 'http://localhost:5002';
 
@@ -186,14 +187,29 @@ router.post('/auto-create', internalServiceAuth, async (req, res) => {
       claim_signals = {},
     } = req.body;
 
-    if (!zone_id || !trigger_type) {
-      return res.status(422).json({ error: 'Missing required fields', code: 'MISSING_FIELDS' });
+    if ((!zone_id && !city_id) || !trigger_type) {
+      return res.status(422).json({ error: 'Missing required fields (need zone_id or city_id)', code: 'MISSING_FIELDS' });
     }
 
-    const { data: policies, error: policiesError } = await db.getActivePoliciesInZone(
-      zone_id,
-      new Date().toISOString().split('T')[0]
-    );
+    let policies = [];
+    let policiesError = null;
+
+    if (zone_id) {
+      const result = await db.getActivePoliciesInZone(
+        zone_id,
+        new Date().toISOString().split('T')[0]
+      );
+      policies = result.data;
+      policiesError = result.error;
+    } else if (city_id) {
+      const cityName = CITY_CONFIGS.find(c => c.city_id === city_id)?.city_name || city_id;
+      const result = await db.getActivePoliciesInCity(
+        cityName,
+        new Date().toISOString().split('T')[0]
+      );
+      policies = result.data;
+      policiesError = result.error;
+    }
 
     if (policiesError || !policies || policies.length === 0) {
       return res.status(201).json({

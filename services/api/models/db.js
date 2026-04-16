@@ -143,7 +143,11 @@ const updateClaimStatus = async (claim_id, status, payout_id = null) => {
 };
 
 const getClaimsForUser = async (user_id) => {
-  return await supabase.from('claims').select('*').eq('user_id', user_id).order('created_at', { ascending: false });
+  return await supabase
+    .from('claims')
+    .select('*')
+    .or(`user_id.eq.${user_id},worker_id.eq.${user_id}`)
+    .order('created_at', { ascending: false });
 };
 
 const getActivePoliciesInZone = async (zone_id, current_date) => {
@@ -157,6 +161,35 @@ const getActivePoliciesInZone = async (zone_id, current_date) => {
     .eq('profiles.zone_id', zone_id);
   
   return { data, error };
+};
+
+const getActivePoliciesInCity = async (cityName, current_date) => {
+  try {
+    // 1. Fetch all zone_ids belonging to this city
+    const { data: zonesData, error: zonesError } = await supabase
+      .from('zones')
+      .select('zone_id')
+      .eq('city', cityName);
+
+    if (zonesError || !zonesData || zonesData.length === 0) {
+      return { data: [], error: zonesError };
+    }
+
+    const zoneIds = zonesData.map(z => z.zone_id);
+
+    // 2. Fetch all active policies where profiles match those zone_ids
+    const { data, error } = await supabase
+      .from('policies')
+      .select('*, profiles!inner(zone_id)')
+      .eq('status', 'ACTIVE')
+      .lte('week_start', current_date)
+      .gte('week_end', current_date)
+      .in('profiles.zone_id', zoneIds);
+    
+    return { data, error };
+  } catch (err) {
+    return { data: null, error: err };
+  }
 };
 
 // TRIGGER EVENTS
@@ -185,6 +218,7 @@ module.exports = {
   updateClaimStatus,
   getClaimsForUser,
   getActivePoliciesInZone,
+  getActivePoliciesInCity,
   createTriggerEvent,
   supabase // Export client for direct use
 };

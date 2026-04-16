@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { apiClient } from '../services/api';
 import { setToken } from '../utils/auth';
@@ -22,6 +22,18 @@ export default function Register() {
   const [otp, setOtp] = useState('');
   const [error, setError] = useState('');
   const [requestEmail, setRequestEmail] = useState('');
+  const [resendTimer, setResendTimer] = useState(0);
+  const [resendSuccess, setResendSuccess] = useState(false);
+
+  useEffect(() => {
+    let interval;
+    if (resendTimer > 0) {
+      interval = setInterval(() => {
+        setResendTimer((prev) => prev - 1);
+      }, 1000);
+    }
+    return () => clearInterval(interval);
+  }, [resendTimer]);
 
   const PLATFORMS = ['ZOMATO', 'SWIGGY'];
 
@@ -116,6 +128,7 @@ export default function Register() {
   const handleVerifyOtp = async (e) => {
     e.preventDefault();
     setError('');
+    setResendSuccess(false);
 
     if (!otp) {
       setError('Please enter the OTP sent to your email.');
@@ -134,6 +147,34 @@ export default function Register() {
     } catch (err) {
       console.error('OTP verification error:', err);
       setError(err.response?.data?.error || 'Invalid OTP. Please try again.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleResendOtp = async () => {
+    if (resendTimer > 0 || !formData.email) return;
+
+    setError('');
+    setResendSuccess(false);
+
+    try {
+      setLoading(true);
+      await apiClient.post('/auth/register', {
+        email: formData.email.trim().toLowerCase(),
+        name: formData.name.trim(),
+        phone: formData.phone.trim().startsWith('+91') ? formData.phone.trim() : `+91${formData.phone.trim()}`,
+        platform: formData.platform,
+        zone_id: formData.zone_id,
+        latitude: coords?.latitude,
+        longitude: coords?.longitude,
+      });
+
+      setResendSuccess(true);
+      setResendTimer(30);
+    } catch (err) {
+      console.error('Resend registration OTP error:', err);
+      setError(err.response?.data?.error || 'Failed to resend OTP. Please try again.');
     } finally {
       setLoading(false);
     }
@@ -170,6 +211,12 @@ export default function Register() {
               </div>
             )}
 
+            {resendSuccess && (
+              <div className="p-4 bg-green-50 border border-green-100 rounded-xl text-sm text-green-600 font-medium">
+                OTP Resent successfully! Check your inbox.
+              </div>
+            )}
+
             <button
               type="submit"
               disabled={loading}
@@ -178,13 +225,26 @@ export default function Register() {
               {loading ? 'Verifying OTP...' : 'Verify and Continue'}
             </button>
 
-            <button
-              type="button"
-              onClick={() => setStep(2)}
-              className="w-full text-center text-gray-500 font-medium hover:text-indigo-600 transition-colors"
-            >
-              Back to details
-            </button>
+            <div className="flex flex-col space-y-3">
+              <button
+                type="button"
+                onClick={handleResendOtp}
+                disabled={loading || resendTimer > 0}
+                className={`w-full text-center font-semibold transition-colors ${
+                  resendTimer > 0 ? 'text-gray-400 cursor-not-allowed' : 'text-indigo-600 hover:text-indigo-700'
+                }`}
+              >
+                {resendTimer > 0 ? `Resend OTP in ${resendTimer}s` : 'Resend OTP'}
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setStep(2)}
+                className="w-full text-center text-gray-500 font-medium hover:text-indigo-600 transition-colors"
+              >
+                Back to details
+              </button>
+            </div>
           </form>
         </div>
       </div>

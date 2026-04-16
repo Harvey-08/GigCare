@@ -1,5 +1,5 @@
 // apps/worker/src/pages/Login.jsx
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { apiClient } from '../services/api';
 import { setToken } from '../utils/auth';
@@ -12,6 +12,18 @@ export default function Login() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [requestEmail, setRequestEmail] = useState('');
+  const [resendTimer, setResendTimer] = useState(0);
+  const [resendSuccess, setResendSuccess] = useState(false);
+
+  useEffect(() => {
+    let interval;
+    if (resendTimer > 0) {
+      interval = setInterval(() => {
+        setResendTimer((prev) => prev - 1);
+      }, 1000);
+    }
+    return () => clearInterval(interval);
+  }, [resendTimer]);
 
   const requestOtp = async (e) => {
     e.preventDefault();
@@ -38,6 +50,7 @@ export default function Login() {
   const verifyOtp = async (e) => {
     e.preventDefault();
     setError('');
+    setResendSuccess(false);
 
     if (!otp) {
       setError('Enter the OTP sent to your email');
@@ -56,6 +69,25 @@ export default function Login() {
     } catch (err) {
       console.error('OTP verify error:', err);
       setError(err.response?.data?.error || 'Invalid OTP. Please try again.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleResendOtp = async () => {
+    if (resendTimer > 0) return;
+    
+    setError('');
+    setResendSuccess(false);
+    
+    try {
+      setLoading(true);
+      await apiClient.post('/auth/login', { email: requestEmail });
+      setResendSuccess(true);
+      setResendTimer(30);
+    } catch (err) {
+      console.error('Resend OTP error:', err);
+      setError(err.response?.data?.error || 'Failed to resend OTP. Please try again.');
     } finally {
       setLoading(false);
     }
@@ -128,6 +160,12 @@ export default function Login() {
               </div>
             )}
 
+            {resendSuccess && (
+              <div className="p-4 bg-green-50 border border-green-100 rounded-xl text-sm text-green-600 font-medium">
+                OTP Resent successfully! Check your inbox.
+              </div>
+            )}
+
             <button
               type="submit"
               disabled={loading}
@@ -136,13 +174,26 @@ export default function Login() {
               {loading ? 'Verifying OTP...' : 'Verify OTP'}
             </button>
 
-            <button
-              type="button"
-              onClick={() => setStep(1)}
-              className="w-full text-center text-gray-500 font-medium hover:text-indigo-600 transition-colors"
-            >
-              Use another email
-            </button>
+            <div className="flex flex-col space-y-3">
+              <button
+                type="button"
+                onClick={handleResendOtp}
+                disabled={loading || resendTimer > 0}
+                className={`w-full text-center font-semibold transition-colors ${
+                  resendTimer > 0 ? 'text-gray-400 cursor-not-allowed' : 'text-indigo-600 hover:text-indigo-700'
+                }`}
+              >
+                {resendTimer > 0 ? `Resend OTP in ${resendTimer}s` : 'Resend OTP'}
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setStep(1)}
+                className="w-full text-center text-gray-500 font-medium hover:text-indigo-600 transition-colors"
+              >
+                Use another email
+              </button>
+            </div>
           </form>
         )}
       </div>

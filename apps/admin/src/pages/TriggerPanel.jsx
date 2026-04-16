@@ -62,7 +62,6 @@ export default function TriggerPanel() {
             </button>
             <h1 className="text-2xl font-black text-slate-900 tracking-tight uppercase">Event Control Center</h1>
           </div>
-          <div className="w-12 h-12 bg-rose-50 rounded-2xl flex items-center justify-center text-2xl shadow-sm border border-rose-100">🚀</div>
         </div>
       </div>
 

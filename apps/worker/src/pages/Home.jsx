@@ -223,8 +223,8 @@ export default function Home({ profile, session, onLogout }) {
                         </div>
                       </div>
                       <div className="text-right">
-                        <span className={`rounded-full px-3 py-1 text-[10px] font-black uppercase tracking-[0.2em] ${statusBadge[claim.status]}`}>
-                          {claim.status.replace('_', ' ')}
+                        <span className={`rounded-full px-3 py-1 text-[10px] font-black uppercase tracking-[0.2em] ${statusBadge[claim.status] || 'bg-slate-100 text-slate-700'}`}>
+                          {claim.status?.replace('_', ' ') || 'UNKNOWN'}
                         </span>
                         <p className="mt-2 text-lg font-black text-slate-900">₹{claim.final_payout}</p>
                       </div>

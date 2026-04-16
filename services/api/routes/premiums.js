@@ -102,8 +102,21 @@ router.post('/calculate', authMiddleware('worker'), async (req, res) => {
         zone_name: zone.name,
         city_id: cityId,
         resolved_location: resolvedLocation,
-        coverage_tier: premium < 120 ? 'SEED' : premium < 180 ? 'STANDARD' : 'PREMIUM',
-        max_payout: premium < 120 ? 600 : premium < 180 ? 1200 : 1800,
+        recommended_tier: premium < 120 ? 'SEED' : premium < 180 ? 'STANDARD' : 'PREMIUM',
+        tiers: {
+          SEED: {
+            premium: Math.round(premium * 0.65),
+            max_payout: 600
+          },
+          STANDARD: {
+            premium: Math.round(premium),
+            max_payout: 1200
+          },
+          PREMIUM: {
+            premium: Math.round(premium * 1.35),
+            max_payout: 1800
+          }
+        }
       },
       meta: { timestamp: new Date().toISOString() },
     });

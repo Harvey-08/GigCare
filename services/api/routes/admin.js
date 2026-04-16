@@ -96,7 +96,7 @@ router.post('/trigger-event', authMiddleware('admin'), async (req, res) => {
     // Call auto-create endpoint internally
     try {
       const claimsRes = await axios.post(`${API_URL}/api/fraud/auto-create`, {
-        zone_id: targetZoneId,
+        zone_id: req.body.zone_id || null,
         city_id: targetCityId,
         trigger_type,
         trigger_value,
@@ -161,13 +161,20 @@ router.get('/dashboard', authMiddleware('admin'), async (req, res) => {
       .order('created_at', { ascending: false })
       .limit(10);
 
+    // 5. Claims Today (last 24h)
+    const twentyFourHoursAgo = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+    const { data: claimsTodayData } = await supabase
+      .from('claims')
+      .select('claim_id')
+      .gte('created_at', twentyFourHoursAgo);
+
     res.json({
       data: {
         loss_ratio_percent: totalPremiums > 0 ? Math.round((totalPayouts / totalPremiums) * 100) : 0,
         total_premiums_collected: totalPremiums,
         total_payouts: totalPayouts,
         reserve_pool: Math.max(0, totalPremiums - totalPayouts),
-        claims_today: 0, // Simplified for demo
+        claims_today: (claimsTodayData || []).length,
         claims_by_status: claimsByStatus,
         recent_claims: recentClaims,
       },
@@ -376,25 +383,40 @@ router.get('/cities/metrics', authMiddleware('admin'), async (req, res) => {
       return acc;
     }, {});
 
+    // Fetch Profiles to map workers to cities
+    const { data: profiles } = await supabase.from('profiles').select('id, zone_id');
+    const { data: activePolicies } = await supabase.from('policies').select('user_id, premium_paid').eq('status', 'ACTIVE');
+
+    const profileMap = (profiles || []).reduce((acc, p) => {
+      acc[p.id] = p.zone_id;
+      return acc;
+    }, {});
+
     const cityMetrics = CITY_CONFIGS.map((city) => {
       const cityZones = zoneGroups[city.city_name] || [];
-      const cityClaims = claimGroups[city.city_name] || [];
+      const cityZoneIds = cityZones.map(z => z.zone_id);
+      
+      const cityClaims = (claims || []).filter(c => cityZoneIds.includes(c.zone_id));
       const recentClaims = cityClaims.filter((claim) => new Date(claim.created_at) >= new Date(Date.now() - 7 * 24 * 60 * 60 * 1000));
+      
+      const cityWorkerCount = (profiles || []).filter(p => cityZoneIds.includes(p.zone_id)).length;
+      
+      // Real policies aggregation
+      const cityActivePolicies = (activePolicies || []).filter(p => cityZoneIds.includes(profileMap[p.user_id]));
+      const totalPremiums = cityActivePolicies.reduce((sum, p) => sum + (p.premium_paid || 0), 0);
+      const totalPayouts = cityClaims.reduce((sum, claim) => sum + Number(claim.final_payout || 0), 0);
+
       const avgRisk = cityZones.length
         ? cityZones.reduce((sum, zone) => sum + Number(zone.zone_risk_score || 1), 0) / cityZones.length
         : 1;
-      const totalPayouts = cityClaims.reduce((sum, claim) => sum + Number(claim.final_payout || 0), 0);
-      const activeWorkersEstimate = Number(city.active_workers_estimate || 0);
-      const activePolicies = Math.max(0, Math.round(activeWorkersEstimate * 0.15));
-      const totalPremiums = activePolicies * (city.city_id === 'KOC' ? 212 : city.city_id === 'JAI' ? 84 : 140);
 
       return {
         city_id: city.city_id,
         city_name: city.city_name,
         state: city.state,
         climate_zone: city.climate_zone,
-        active_workers_estimate: activeWorkersEstimate,
-        active_policies: activePolicies,
+        active_workers_estimate: cityWorkerCount,
+        active_policies: cityActivePolicies.length,
         zones_count: cityZones.length,
         average_risk: Number(avgRisk.toFixed(2)),
         this_week_claims: recentClaims.length,
@@ -402,13 +424,7 @@ router.get('/cities/metrics', authMiddleware('admin'), async (req, res) => {
         total_payouts: totalPayouts,
         total_premiums: totalPremiums,
         loss_ratio: totalPremiums > 0 ? Number((totalPayouts / totalPremiums).toFixed(2)) : 0,
-        premium_range: city.city_id === 'KOC'
-          ? 'Rs.200-225'
-          : city.city_id === 'JAI'
-            ? 'Rs.75-90'
-            : city.city_id === 'MUM'
-              ? 'Rs.185-215'
-              : 'Rs.110-180',
+        premium_range: city.city_id === 'KOC' ? 'Rs.200-225' : city.city_id === 'JAI' ? 'Rs.75-90' : city.city_id === 'MUM' ? 'Rs.185-215' : 'Rs.110-180',
       };
     });
 

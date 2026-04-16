@@ -174,10 +174,15 @@ router.post('/:id/location', authMiddleware('worker'), requireConsent('GPS_LOCAT
       updates.zone_id = location.zone_id;
     }
 
-    const { data: worker, error } = await supabase
-      .from('workers')
-      .update(updates)
-      .eq('worker_id', id)
+    const { data: profile, error } = await supabase
+      .from('profiles')
+      .update({
+        zone_id: updates.zone_id,
+        last_known_latitude: latitude,
+        last_known_longitude: longitude,
+        location_verified: true
+      })
+      .eq('id', id)
       .select('*')
       .single();
 
@@ -187,12 +192,12 @@ router.post('/:id/location', authMiddleware('worker'), requireConsent('GPS_LOCAT
 
     res.json({
       data: {
-        worker_id: worker.worker_id,
-        location_mode: worker.location_mode,
-        city_id: worker.city_id,
-        district: worker.district,
-        state: worker.state,
-        zone_id: worker.zone_id,
+        worker_id: profile.id,
+        location_mode: profile.location_mode,
+        city_id: profile.city_id,
+        district: profile.district,
+        state: profile.state,
+        zone_id: profile.zone_id,
         location,
       },
       meta: { timestamp: new Date().toISOString() },
