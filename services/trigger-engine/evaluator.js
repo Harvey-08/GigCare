@@ -1,42 +1,16 @@
 // services/trigger-engine/evaluator.js
 // Evaluate all triggers and dispatch claims - Person C
+// Phase 3: Uses IMD + CPCB for India-specific weather data
 
-const axios = require('axios');
-const db = require('../api/models/db'); // Shared DB client
-
-// Zone definitions
-const ZONES = [
-  { zone_id: 'zone_01', name: 'Koramangala', lat: 12.9352, lon: 77.6245 },
-  { zone_id: 'zone_02', name: 'Whitefield', lat: 12.9698, lon: 77.7499 },
-  { zone_id: 'zone_03', name: 'Indiranagar', lat: 12.9716, lon: 77.6412 },
-  { zone_id: 'zone_04', name: 'HSR Layout', lat: 12.9151, lon: 77.6398 },
-  { zone_id: 'zone_05', name: 'Bommanahalli', lat: 12.9010, lon: 77.6182 },
-];
-
-// Mock data sources (replace with real API calls in Phase 3)
-async function getRainfall(lat, lon) {
-  // Mock rainfall: 50-70mm if mock mode, else call Open-Meteo
-  if (process.env.USE_MOCK_DATA === 'true') {
-    return Math.random() > 0.7 ? 60 : 20;
-  }
-  return 20; // Safe default
-}
-
-async function getTemperature(lat, lon) {
-  // Mock temp: 40-42°C if mock mode, else call OpenWeather
-  if (process.env.USE_MOCK_DATA === 'true') {
-    return Math.random() > 0.8 ? 41 : 36;
-  }
-  return 36; // Safe default
-}
-
-async function getAQI(lat, lon) {
-  // Mock AQI: 300-350 if mock mode, else call WAQI
-  if (process.env.USE_MOCK_DATA === 'true') {
-    return Math.random() > 0.85 ? 320 : 200;
-  }
-  return 200; // Safe default
-}
+const { dispatchClaims } = require('./claim-dispatcher');
+const { CITY_CONFIGS } = require('./config/cities');
+const { latLonToGridCell } = require('./utils/geogrid');
+const imd = require('./sources/imd');
+const cpcb = require('./sources/cpcb');
+const openmeteo = require('./sources/openmeteo');
+const openweather = require('./sources/openweather');
+const waqi = require('./sources/waqi');
+const social = require('./sources/social');
 
 // =====================================================
 // MAIN EVALUATOR
@@ -45,26 +19,31 @@ async function evaluateAllTriggers() {
   const firedEvents = [];
   const now = new Date();
 
-  console.log('📊 Evaluating all triggers...');
+  console.log('📊 Evaluating all triggers (Phase 3 - IMD/CPCB enabled)...');
 
-  for (const zone of ZONES) {
-    console.log(`  Checking ${zone.name}...`);
+  for (const city of CITY_CONFIGS) {
+    const gridCell = latLonToGridCell(city.centroid_lat, city.centroid_lon, city);
+    console.log(`  Checking ${city.city_name}...`);
 
     // =====================================================
     // TRIGGER 1: Heavy Rain (>= 50mm)
+    // Phase 3: Primary source = IMD (India Meteorological Department)
     // =====================================================
-    const rain = await getRainfall(zone.lat, zone.lon);
+    const rain = await imd.getRainfall(city.centroid_lat, city.centroid_lon);
     if (rain >= 50) {
       const orderDrop = 0.45 + Math.random() * 0.15; // Simulate 30-60% drop
       if (orderDrop > 0.4) {
-        console.log(`    ☔ Heavy rain ${rain}mm + ${(orderDrop * 100).toFixed(0)}% order drop`);
+        console.log(`    ☔ Heavy rain ${rain}mm (IMD) + ${(orderDrop * 100).toFixed(0)}% order drop`);
         const event = {
-          zone_id: zone.zone_id,
+          city_id: city.city_id,
+          zone_id: gridCell.zone_id,
+          city_name: city.city_name,
           trigger_type: 'HEAVY_RAIN',
           trigger_value: rain,
           severity_factor: 1.3,
           peak_multiplier: now.getHours() >= 18 && now.getHours() <= 21 ? 1.2 : 1.0,
           event_id: null,
+          data_source: 'IMD',
         };
         // Call API to create claims
         await dispatchClaims(event);
@@ -74,17 +53,21 @@ async function evaluateAllTriggers() {
 
     // =====================================================
     // TRIGGER 2: Extreme Heat (>= 40°C)
+    // Phase 3: Primary source = IMD temperature forecast
     // =====================================================
-    const temp = await getTemperature(zone.lat, zone.lon);
+    const temp = await imd.getTemperature(city.centroid_lat, city.centroid_lon);
     if (temp >= 40) {
-      console.log(`    🔥 Heat wave ${temp}°C`);
+      console.log(`    🔥 Heat wave ${temp}°C (IMD)`);
       const event = {
-        zone_id: zone.zone_id,
+        city_id: city.city_id,
+        zone_id: gridCell.zone_id,
+        city_name: city.city_name,
         trigger_type: 'EXTREME_HEAT',
         trigger_value: temp,
         severity_factor: 1.0,
         peak_multiplier: 1.0,
         event_id: null,
+        data_source: 'IMD',
       };
       await dispatchClaims(event);
       firedEvents.push(event);
@@ -92,18 +75,43 @@ async function evaluateAllTriggers() {
 
     // =====================================================
     // TRIGGER 3: Poor AQI (>= 300)
+    // Phase 3: Primary source = CPCB (Central Pollution Control Board)
     // =====================================================
-    const aqi = await getAQI(zone.lat, zone.lon);
+    const aqi = await cpcb.getAQI(city.centroid_lat, city.centroid_lon);
     if (aqi >= 300) {
       const severity = aqi >= 400 ? 1.5 : 1.0;
-      console.log(`    😷 Poor AQI ${aqi} (severity: ${severity})`);
+      console.log(`    😷 Poor AQI ${aqi} (CPCB, severity: ${severity})`);
       const event = {
-        zone_id: zone.zone_id,
+        city_id: city.city_id,
+        zone_id: gridCell.zone_id,
+        city_name: city.city_name,
         trigger_type: 'POOR_AQI',
         trigger_value: aqi,
         severity_factor: severity,
         peak_multiplier: 1.0,
         event_id: null,
+        data_source: 'CPCB',
+      };
+      await dispatchClaims(event);
+      firedEvents.push(event);
+    }
+
+    // =====================================================
+    // TRIGGER 4/5: Social disruptions (curfew / app outage)
+    // =====================================================
+    const socialEvent = social.getSocialDisruption(city.city_id);
+    if (socialEvent) {
+      console.log(`    🚧 ${socialEvent.type} detected (${socialEvent.reason})`);
+      const event = {
+        city_id: city.city_id,
+        zone_id: gridCell.zone_id,
+        city_name: city.city_name,
+        trigger_type: socialEvent.type,
+        trigger_value: socialEvent.value,
+        severity_factor: socialEvent.severity_factor,
+        peak_multiplier: 1.0,
+        event_id: null,
+        data_source: 'SOCIAL',
       };
       await dispatchClaims(event);
       firedEvents.push(event);
@@ -111,25 +119,6 @@ async function evaluateAllTriggers() {
   }
 
   return firedEvents;
-}
-
-// =====================================================
-// DISPATCH CLAIMS: Call API to auto-create claims
-// =====================================================
-async function dispatchClaims(event) {
-  try {
-    const apiUrl = process.env.API_URL || 'http://localhost:3001';
-    const internalKey = process.env.INTERNAL_SERVICE_KEY;
-
-    const response = await axios.post(`${apiUrl}/api/claims/auto-create`, event, {
-      headers: { 'x-internal-service-key': internalKey },
-      timeout: 5000,
-    });
-
-    console.log(`      ✅ Created ${response.data.data?.length || 0} claims`);
-  } catch (err) {
-    console.error(`      ❌ Failed to dispatch claims: ${err.message}`);
-  }
 }
 
 module.exports = {

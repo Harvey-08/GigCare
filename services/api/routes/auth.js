@@ -1,248 +1,282 @@
 // services/api/routes/auth.js
-// Authentication endpoints - Person A
-
 const express = require('express');
+const nodemailer = require('nodemailer');
+const jwt = require('jsonwebtoken');
 const { v4: uuidv4 } = require('uuid');
 const db = require('../models/db');
-const { authMiddleware, generateToken } = require('../middleware/auth');
+const { authMiddleware } = require('../middleware/auth');
 
 const router = express.Router();
 
-// =====================================================
-// POST /api/auth/register
-// Register a new worker and return JWT
-// =====================================================
+const OTP_EXPIRATION_MS = 10 * 60 * 1000;
+const pendingOtps = new Map();
+
+const transportConfig = process.env.SMTP_HOST?.includes('gmail.com')
+  ? {
+      service: 'gmail',
+      auth: {
+        user: process.env.SMTP_USER,
+        pass: process.env.SMTP_PASS,
+      },
+    }
+  : process.env.SMTP_HOST
+  ? {
+      host: process.env.SMTP_HOST,
+      port: Number(process.env.SMTP_PORT) || 587,
+      secure: process.env.SMTP_SECURE === 'true',
+      auth: {
+        user: process.env.SMTP_USER,
+        pass: process.env.SMTP_PASS,
+      },
+    }
+  : null;
+
+const transporter = transportConfig ? nodemailer.createTransport(transportConfig) : null;
+
+const generateOtp = () => String(Math.floor(100000 + Math.random() * 900000));
+
+const sendOtpEmail = async (email, code) => {
+  const message = {
+    from: process.env.EMAIL_FROM || 'no-reply@gigcare.app',
+    to: email,
+    subject: 'Your GigCare OTP code',
+    text: `Your GigCare OTP code is ${code}. It expires in 10 minutes.`,
+    html: `<p>Your GigCare OTP code is <strong>${code}</strong>.</p><p>It expires in 10 minutes.</p>`,
+  };
+
+  if (!transporter) {
+    console.log(`📩 OTP for ${email}: ${code} (SMTP not configured)`);
+    return;
+  }
+
+  try {
+    const result = await transporter.sendMail(message);
+    console.log(`📧 OTP email sent successfully to ${email} (Message ID: ${result.messageId})`);
+  } catch (error) {
+    console.error(`❌ Failed to send OTP email to ${email}:`, error.message);
+    throw error; // Re-throw to be caught by the calling function
+  }
+};
+
+const createPendingOtp = (email, mode, payload) => {
+  const code = generateOtp();
+  const key = `${email.toLowerCase()}:${mode}`;
+  pendingOtps.set(key, {
+    code,
+    expiresAt: Date.now() + OTP_EXPIRATION_MS,
+    payload,
+  });
+  return code;
+};
+
+const consumePendingOtp = (email, mode, code) => {
+  const key = `${email.toLowerCase()}:${mode}`;
+  const pending = pendingOtps.get(key);
+  if (!pending || pending.code !== code || pending.expiresAt < Date.now()) {
+    return null;
+  }
+  pendingOtps.delete(key);
+  return pending.payload;
+};
+
+const createJwtToken = (profile) => {
+  const secret = process.env.JWT_SECRET;
+  if (!secret) {
+    throw new Error('JWT_SECRET must be defined');
+  }
+
+  return jwt.sign(
+    {
+      sub: profile.id,
+      email: profile.email,
+      role: profile.role,
+    },
+    secret,
+    { expiresIn: process.env.JWT_EXPIRES_IN || '1h' }
+  );
+};
+
 router.post('/register', async (req, res) => {
   try {
-    const { phone, name, platform, zone_id } = req.body;
-
-    // Validation
-    if (!phone || !name || !platform || !zone_id) {
-      return res.status(422).json({
-        error: 'Missing required fields: phone, name, platform, zone_id',
-        code: 'MISSING_FIELDS',
-      });
+    const { email, name, phone, platform, zone_id, latitude, longitude } = req.body;
+    if (!email || !name || !phone || !platform || !zone_id) {
+      return res.status(422).json({ error: 'Missing required fields', code: 'MISSING_FIELDS' });
     }
 
-    // Check phone uniqueness
-    const existing = await db.query('SELECT worker_id FROM workers WHERE phone = $1', [phone]);
-    if (existing.rows.length > 0) {
-      return res.status(409).json({
-        error: 'Phone number already registered',
-        code: 'PHONE_EXISTS',
-      });
+    const normalizedEmail = email.trim().toLowerCase();
+    const normalizedPhone = phone.trim().startsWith('+') ? phone.trim() : `+91${phone.trim()}`;
+
+    const existingProfile = await db.getProfileByEmailOrPhone(normalizedEmail, normalizedPhone);
+    if (existingProfile) {
+      return res.status(409).json({ error: 'User already exists', code: 'USER_EXISTS' });
     }
 
-    // Check zone exists
-    const zone = await db.getZone(zone_id);
-    if (zone.rows.length === 0) {
-      return res.status(404).json({
-        error: 'Zone not found',
-        code: 'ZONE_NOT_FOUND',
-        field: 'zone_id',
-      });
-    }
+    const otpCode = createPendingOtp(normalizedEmail, 'register', {
+      email: normalizedEmail,
+      name: name.trim(),
+      phone: normalizedPhone,
+      platform,
+      zone_id,
+      latitude: latitude || null,
+      longitude: longitude || null,
+      location_verified: !!latitude && !!longitude,
+    });
 
-    // Create worker
-    const worker_id = `w-${uuidv4().substring(0, 8)}`;
-    const result = await db.createWorker(worker_id, name, phone, platform, zone_id);
+    await sendOtpEmail(normalizedEmail, otpCode);
 
-    if (result.rows.length === 0) {
-      throw new Error('Worker creation failed');
-    }
-
-    const worker = result.rows[0];
-    const token = generateToken(worker_id, 'WORKER');
-
-    res.status(201).json({
-      data: {
-        worker_id,
-        name: worker.name,
-        phone: worker.phone,
-        platform: worker.platform,
-        zone_id: worker.zone_id,
-        token,
-      },
-      meta: { timestamp: new Date().toISOString() },
+    res.json({
+      data: { email: normalizedEmail },
+      message: 'OTP sent for registration. Check your inbox.',
     });
   } catch (err) {
-    console.error('Registration error:', err);
-    res.status(500).json({
-      error: 'Registration failed',
-      code: 'REGISTRATION_FAILED',
-    });
+    console.error('Registration OTP error:', err);
+    res.status(500).json({ error: 'Failed to start registration', code: 'REGISTRATION_FAILED' });
   }
 });
 
-// =====================================================
-// POST /api/auth/login
-// Mock login with OTP (OTP is hardcoded as 123456 for demo)
-// =====================================================
 router.post('/login', async (req, res) => {
   try {
-    const { phone, otp } = req.body;
-
-    if (!phone || !otp) {
-      return res.status(422).json({
-        error: 'Missing required fields: phone, otp',
-        code: 'MISSING_FIELDS',
-      });
+    const { email } = req.body;
+    if (!email) {
+      return res.status(422).json({ error: 'Email is required', code: 'MISSING_EMAIL' });
     }
 
-    // For demo: accept OTP 123456
-    const DEMO_OTP = '123456';
-    if (otp !== DEMO_OTP) {
-      return res.status(401).json({
-        error: 'Invalid OTP',
-        code: 'INVALID_OTP',
-      });
+    const normalizedEmail = email.trim().toLowerCase();
+    const profile = await db.getProfileByEmail(normalizedEmail);
+
+    if (!profile) {
+      return res.status(404).json({ error: 'Email not found', code: 'USER_NOT_FOUND' });
     }
 
-    // Find worker by phone
-    const result = await db.query('SELECT worker_id FROM workers WHERE phone = $1', [phone]);
+    const otpCode = createPendingOtp(normalizedEmail, 'login', { email: normalizedEmail });
+    await sendOtpEmail(normalizedEmail, otpCode);
 
-    if (result.rows.length === 0) {
-      return res.status(404).json({
-        error: 'Worker not found',
-        code: 'WORKER_NOT_FOUND',
-      });
-    }
-
-    const worker_id = result.rows[0].worker_id;
-    const token = generateToken(worker_id, 'WORKER');
-
-    res.json({
-      data: {
-        worker_id,
-        token,
-      },
-      meta: { timestamp: new Date().toISOString() },
-    });
+    res.json({ data: { email: normalizedEmail }, message: 'OTP sent for login.' });
   } catch (err) {
-    console.error('Login error:', err);
-    res.status(500).json({
-      error: 'Login failed',
-      code: 'LOGIN_FAILED',
+    console.error('Login OTP error:', err);
+    res.status(500).json({ error: 'Failed to send login OTP', code: 'LOGIN_OTP_FAILED' });
+  }
+});
+
+router.post('/verify-otp', async (req, res) => {
+  try {
+    const { email, otp } = req.body;
+    if (!email || !otp) {
+      return res.status(422).json({ error: 'Email and OTP are required', code: 'MISSING_FIELDS' });
+    }
+
+    const normalizedEmail = email.trim().toLowerCase();
+    const registrationPayload = consumePendingOtp(normalizedEmail, 'register', otp);
+
+    let profile = null;
+
+    if (registrationPayload) {
+      const profileData = {
+        id: uuidv4(),
+        full_name: registrationPayload.name,
+        email: registrationPayload.email,
+        phone: registrationPayload.phone,
+        role: 'worker',
+        platform: registrationPayload.platform,
+        zone_id: registrationPayload.zone_id,
+        last_known_latitude: registrationPayload.latitude,
+        last_known_longitude: registrationPayload.longitude,
+        location_verified: registrationPayload.location_verified,
+      };
+
+      const { data, error } = await db.createProfile(profileData);
+      if (error) {
+        throw error;
+      }
+      profile = data;
+    } else {
+      const loginPayload = consumePendingOtp(normalizedEmail, 'login', otp);
+      if (!loginPayload) {
+        return res.status(401).json({ error: 'Invalid or expired OTP', code: 'INVALID_OTP' });
+      }
+
+      profile = await db.getProfileByEmail(normalizedEmail);
+      if (!profile) {
+        return res.status(404).json({ error: 'User profile not found', code: 'PROFILE_NOT_FOUND' });
+      }
+    }
+
+    const token = createJwtToken(profile);
+    res.json({ data: { token, profile } });
+  } catch (err) {
+    console.error('OTP verification error:', err);
+    res.status(err.status || 500).json({
+      error: err.message || 'OTP verification failed',
+      code: err.code || 'OTP_VERIFICATION_FAILED',
+      details: err.details || null, // Supabase specific error details
+      hint: err.hint || null        // Supabase specific error hints
     });
   }
 });
 
 // =====================================================
 // GET /api/auth/me
-// Get current worker profile (requires JWT)
+// Get current user profile (Worker or Admin)
 // =====================================================
-router.get('/me', authMiddleware('WORKER'), async (req, res) => {
+router.get('/me', authMiddleware(), async (req, res) => {
   try {
-    const { worker_id } = req.user;
-    const result = await db.getWorker(worker_id);
+    const profile = req.user.profile;
 
-    if (result.rows.length === 0) {
+    if (!profile) {
       return res.status(404).json({
-        error: 'Worker not found',
-        code: 'WORKER_NOT_FOUND',
+        error: 'Profile not found',
+        code: 'PROFILE_NOT_FOUND',
       });
     }
 
-    const worker = result.rows[0];
     res.json({
-      data: worker,
+      data: profile,
       meta: { timestamp: new Date().toISOString() },
     });
   } catch (err) {
-    console.error('Worker profile fetch error:', err);
+    console.error('Profile fetch error:', err);
     res.status(500).json({
-      error: 'Failed to fetch worker profile',
-      code: 'WORKER_PROFILE_FETCH_FAILED',
+      error: 'Failed to fetch profile',
+      code: 'PROFILE_FETCH_FAILED',
     });
   }
 });
 
 // =====================================================
-// POST /api/auth/admin-login
-// Admin login with phone/OTP (OTP hardcoded as 123456 for demo)
+// POST /api/auth/complete-profile
+// Update worker profile with platform and zone after login
 // =====================================================
-router.post('/admin-login', async (req, res) => {
+router.post('/complete-profile', authMiddleware('worker'), async (req, res) => {
   try {
-    const { phone, otp } = req.body;
+    const { user_id } = req.user;
+    const { phone, name, platform, zone_id } = req.body;
 
-    // Validate input
-    if (!phone || !otp) {
+    if (!phone || !name || !platform || !zone_id) {
       return res.status(422).json({
-        error: 'Missing required fields: phone, otp',
+        error: 'Missing required fields',
         code: 'MISSING_FIELDS',
       });
     }
 
-    // Demo OTP validation (in production, use proper OTP service)
-    if (otp !== '123456') {
-      return res.status(401).json({
-        error: 'Invalid OTP',
-        code: 'INVALID_OTP',
-      });
-    }
+    const { data: profile, error } = await db.updateProfile(user_id, {
+      full_name: name,
+      phone,
+      platform,
+      zone_id,
+      updated_at: new Date().toISOString()
+    });
 
-    // Find admin by phone
-    const result = await db.query('SELECT * FROM admins WHERE phone = $1 AND is_active = true', [phone]);
-
-    if (result.rows.length === 0) {
-      return res.status(404).json({
-        error: 'Admin not found',
-        code: 'ADMIN_NOT_FOUND',
-      });
-    }
-
-    const admin = result.rows[0];
-    const token = generateToken(admin.admin_id, 'ADMIN');
-
-    // Update last login
-    await db.query('UPDATE admins SET last_login = CURRENT_TIMESTAMP WHERE admin_id = $1', [admin.admin_id]);
+    if (error) throw error;
 
     res.json({
-      data: {
-        admin_id: admin.admin_id,
-        name: admin.name,
-        email: admin.email,
-        role: admin.role,
-        permissions: admin.permissions,
-        token,
-      },
-      meta: { timestamp: new Date().toISOString() },
+      data: profile,
+      message: 'Profile completed successfully',
     });
   } catch (err) {
-    console.error('Admin login error:', err);
+    console.error('Profile completion error:', err);
     res.status(500).json({
-      error: 'Admin login failed',
-      code: 'ADMIN_LOGIN_FAILED',
-    });
-  }
-});
-
-// =====================================================
-// GET /api/auth/admin/me
-// Get current admin profile (requires JWT)
-// =====================================================
-router.get('/admin/me', authMiddleware('ADMIN'), async (req, res) => {
-  try {
-    const { admin_id } = req.user;
-    const result = await db.query('SELECT admin_id, name, email, phone, role, permissions, last_login, created_at FROM admins WHERE admin_id = $1', [admin_id]);
-
-    if (result.rows.length === 0) {
-      return res.status(404).json({
-        error: 'Admin not found',
-        code: 'ADMIN_NOT_FOUND',
-      });
-    }
-
-    const admin = result.rows[0];
-    res.json({
-      data: admin,
-      meta: { timestamp: new Date().toISOString() },
-    });
-  } catch (err) {
-    console.error('Admin profile fetch error:', err);
-    res.status(500).json({
-      error: 'Failed to fetch admin profile',
-      code: 'ADMIN_PROFILE_FETCH_FAILED',
+      error: 'Failed to complete profile',
+      code: 'PROFILE_COMPLETION_FAILED',
     });
   }
 });

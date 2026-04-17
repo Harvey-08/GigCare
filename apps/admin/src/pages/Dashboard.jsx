@@ -1,188 +1,388 @@
-// apps/admin/src/pages/Dashboard.jsx
-import React, { useState, useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { apiClient } from '../services/api';
+import IndiaCityMap from '../components/IndiaCityMap';
 
-export default function Dashboard({ admin, onLogout }) {
+function StatCard({ label, value, note, accent }) {
+  return (
+    <div className="rounded-[28px] border border-slate-200 bg-white p-6 shadow-sm">
+      <p className="text-[10px] font-black uppercase tracking-[0.3em] text-slate-400">{label}</p>
+      <p className={`mt-3 text-3xl font-black ${accent}`}>{value}</p>
+      <p className="mt-2 text-xs font-medium text-slate-500">{note}</p>
+    </div>
+  );
+}
+
+function Donut({ claimsByStatus }) {
+  const entries = Object.entries(claimsByStatus || {});
+  const total = entries.reduce((sum, [, count]) => sum + count, 0) || 1;
+  const palette = ['#2563EB', '#1A7F4B', '#E8960C', '#B91C1C', '#64748B'];
+  let cursor = 0;
+
+  const segments = entries.map(([status, count], index) => {
+    const percentage = (count / total) * 100;
+    const start = cursor;
+    cursor += percentage;
+    return `${palette[index % palette.length]} ${start}% ${cursor}%`;
+  });
+
+  return (
+    <div className="flex flex-col items-center rounded-[28px] border border-slate-200 bg-white p-6 shadow-sm">
+      <div className="h-40 w-40 rounded-full" style={{ background: `conic-gradient(${segments.join(', ')})` }} />
+      <div className="mt-4 text-center">
+        <p className="text-xs font-black uppercase tracking-[0.3em] text-slate-400">Claims by Status</p>
+        <p className="text-2xl font-black text-slate-900">{total} total</p>
+      </div>
+    </div>
+  );
+}
+
+function formatShortDate(dateValue) {
+  if (!dateValue) return '--';
+  const parsed = new Date(dateValue);
+  if (Number.isNaN(parsed.getTime())) return '--';
+  return new Intl.DateTimeFormat('en-IN', {
+    weekday: 'short',
+    day: '2-digit',
+    month: 'short',
+  }).format(parsed);
+}
+
+function getAqiTone(category) {
+  if (category === 'GOOD') return 'bg-emerald-100 text-emerald-700';
+  if (category === 'MODERATE') return 'bg-lime-100 text-lime-700';
+  if (category === 'UNHEALTHY_FOR_SENSITIVE') return 'bg-amber-100 text-amber-700';
+  if (category === 'UNHEALTHY') return 'bg-orange-100 text-orange-700';
+  if (category === 'VERY_UNHEALTHY') return 'bg-rose-100 text-rose-700';
+  if (category === 'HAZARDOUS') return 'bg-fuchsia-100 text-fuchsia-700';
+  return 'bg-slate-100 text-slate-700';
+}
+
+export default function Dashboard({ profile, onLogout }) {
   const navigate = useNavigate();
   const [dashboard, setDashboard] = useState(null);
-  const [claims, setClaims] = useState([]);
+  const [cityMetrics, setCityMetrics] = useState([]);
+  const [fraudRings, setFraudRings] = useState([]);
+  const [eligibilityStats, setEligibilityStats] = useState(null);
+  const [forecast, setForecast] = useState(null);
+  const [weatherAqiWeek, setWeatherAqiWeek] = useState(null);
+  const [heatmap, setHeatmap] = useState([]);
+  const [selectedCityId, setSelectedCityId] = useState('BLR');
   const [loading, setLoading] = useState(true);
-  const [autoRefresh, setAutoRefresh] = useState(true);
 
   useEffect(() => {
-    fetchDashboard();
-    const interval = autoRefresh ? setInterval(fetchDashboard, 5000) : null;
+    fetchData();
+    const interval = setInterval(fetchData, 30000);
     return () => clearInterval(interval);
-  }, [autoRefresh]);
+  }, []);
 
-  const fetchDashboard = async () => {
+  useEffect(() => {
+    fetchWeatherAqiWeek(selectedCityId);
+  }, [selectedCityId]);
+
+  const fetchData = async () => {
     try {
-      const [dashRes, claimsRes] = await Promise.all([
+      const [dashRes, cityRes, ringsRes, eligibilityRes, forecastRes, heatmapRes] = await Promise.allSettled([
         apiClient.get('/admin/dashboard'),
-        apiClient.get('/admin/claims'),
+        apiClient.get('/admin/cities/metrics'),
+        apiClient.get('/admin/fraud-rings'),
+        apiClient.get('/admin/eligibility-stats'),
+        apiClient.get('/admin/forecast'),
+        apiClient.get('/zones/heatmap'),
       ]);
-      setDashboard(dashRes.data.data);
-      setClaims(claimsRes.data.data || []);
+
+      const nextDashboard = dashRes.status === 'fulfilled' ? (dashRes.value.data.data || null) : null;
+      const nextCityMetrics = cityRes.status === 'fulfilled' ? (cityRes.value.data.data || []) : [];
+      const nextFraudRings = ringsRes.status === 'fulfilled' ? (ringsRes.value.data.data || []) : [];
+      const nextEligibility = eligibilityRes.status === 'fulfilled' ? (eligibilityRes.value.data.data || null) : null;
+      const nextForecast = forecastRes.status === 'fulfilled' ? (forecastRes.value.data.data || null) : null;
+      const nextHeatmap = heatmapRes.status === 'fulfilled' ? (heatmapRes.value.data.data || []) : [];
+
+      setDashboard(nextDashboard);
+      setCityMetrics(nextCityMetrics);
+      setFraudRings(nextFraudRings);
+      setEligibilityStats(nextEligibility);
+      setForecast(nextForecast);
+      setHeatmap(nextHeatmap);
+
+      if (!selectedCityId && nextCityMetrics.length > 0) {
+        setSelectedCityId(nextCityMetrics[0].city_id);
+      }
     } catch (err) {
-      console.error('Failed to fetch dashboard:', err.message);
+      console.error('Dashboard data fetch error:', err.message);
     } finally {
       setLoading(false);
     }
   };
 
-  const statusBadge = {
-    APPROVED: 'bg-green-100 text-green-800',
-    PARTIAL: 'bg-yellow-100 text-yellow-800',
-    FLAGGED: 'bg-red-100 text-red-800',
-    PAID: 'bg-blue-100 text-blue-800',
+  const fetchWeatherAqiWeek = async (cityId) => {
+    try {
+      const response = await apiClient.get('/admin/weather-aqi-week', {
+        params: { city_id: cityId || 'BLR' },
+      });
+      setWeatherAqiWeek(response.data.data || null);
+    } catch (err) {
+      console.error('Weather AQI week fetch error:', err.message);
+      setWeatherAqiWeek(null);
+    }
   };
 
+  const selectedCity = cityMetrics.find((city) => city.city_id === selectedCityId) || cityMetrics[0];
+  const selectedHeat = heatmap
+    .filter((zone) => zone.city_id === selectedCity?.city_id || zone.city === selectedCity?.city_name)
+    .slice(0, 18);
+  const claimsByStatus = dashboard?.claims_by_status || {};
+
   return (
-    <div className="min-h-screen bg-gray-50">
-      {/* Header */}
-      <div className="bg-white border-b border-gray-200 sticky top-0 z-10">
-        <div className="max-w-6xl mx-auto px-4 py-4 flex items-center justify-between">
-          <div>
-            <h1 className="text-2xl font-bold text-gray-900">Admin Dashboard</h1>
-            <p className="text-sm text-gray-600">GigCare Operations</p>
+    <div className="min-h-screen bg-[#F1F5F9] text-slate-900">
+      <nav className="sticky top-0 z-20 border-b border-slate-800 bg-slate-950 text-white shadow-lg">
+        <div className="mx-auto flex max-w-7xl items-center justify-between px-6 py-4">
+          <div className="flex items-center gap-4">
+            <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-white/10 text-2xl">🛡️</div>
+            <div>
+              <h1 className="text-lg font-black tracking-tight">GigCare Admin</h1>
+              <p className="text-[10px] font-bold uppercase tracking-[0.35em] text-slate-400">Multi-city control room</p>
+            </div>
           </div>
           <div className="flex items-center gap-4">
-            <label className="flex items-center gap-2 text-sm">
-              <input
-                type="checkbox"
-                checked={autoRefresh}
-                onChange={(e) => setAutoRefresh(e.target.checked)}
-                className="w-4 h-4"
-              />
-              <span className="text-gray-700">Auto-refresh</span>
-            </label>
+            <button
+              onClick={() => navigate('/trigger')}
+              className="rounded-xl border border-indigo-500/40 bg-indigo-600/20 px-4 py-2 text-xs font-black uppercase tracking-[0.25em] text-indigo-200 transition-all hover:bg-indigo-600/40"
+            >
+              Trigger Panel
+            </button>
+            <div className="hidden text-right sm:block">
+              <p className="text-sm font-bold">{profile?.full_name}</p>
+              <p className="text-[10px] font-bold uppercase tracking-[0.3em] text-indigo-300">System Administrator</p>
+            </div>
             <button
               onClick={onLogout}
-              className="text-sm text-gray-600 hover:text-gray-900 underline"
+              className="rounded-xl border border-slate-700 bg-slate-900 px-4 py-2 text-xs font-black uppercase tracking-[0.25em] transition-all hover:border-rose-500 hover:bg-rose-600"
             >
-              Logout
+              Secure Logout
             </button>
           </div>
         </div>
-      </div>
+      </nav>
 
-      {/* Content */}
-      <div className="max-w-6xl mx-auto px-4 py-6">
+      <main className="mx-auto max-w-7xl px-6 py-8">
         {loading && !dashboard ? (
-          <div className="text-center py-12 text-gray-500">Loading dashboard...</div>
-        ) : dashboard ? (
-          <>
-            {/* Metrics Grid */}
-            <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-8">
-              <div className="bg-white rounded-lg p-6 border border-gray-200">
-                <p className="text-gray-600 text-sm font-medium">Loss Ratio</p>
-                <p className="text-3xl font-bold text-gray-900 mt-2">{dashboard.loss_ratio}%</p>
-                <p className="text-xs text-gray-500 mt-1">Payouts vs Premiums</p>
-              </div>
-
-              <div className="bg-white rounded-lg p-6 border border-gray-200">
-                <p className="text-gray-600 text-sm font-medium">Total Premiums</p>
-                <p className="text-3xl font-bold text-teal-600 mt-2">₹{dashboard.total_premiums}</p>
-                <p className="text-xs text-gray-500 mt-1">All active policies</p>
-              </div>
-
-              <div className="bg-white rounded-lg p-6 border border-gray-200">
-                <p className="text-gray-600 text-sm font-medium">Total Payouts</p>
-                <p className="text-3xl font-bold text-green-600 mt-2">₹{dashboard.total_payouts}</p>
-                <p className="text-xs text-gray-500 mt-1">Claim disbursements</p>
-              </div>
-
-              <div className="bg-white rounded-lg p-6 border border-gray-200">
-                <p className="text-gray-600 text-sm font-medium">Claims Today</p>
-                <p className="text-3xl font-bold text-blue-600 mt-2">{dashboard.claims_today}</p>
-                <p className="text-xs text-gray-500 mt-1">Last 24 hours</p>
-              </div>
+          <div className="flex flex-col items-center justify-center py-24 space-y-4">
+            <div className="h-10 w-10 animate-spin rounded-full border-4 border-indigo-600 border-t-transparent" />
+            <p className="text-xs font-black uppercase tracking-[0.35em] text-slate-400">Compiling metrics...</p>
+          </div>
+        ) : (
+          <div className="space-y-8">
+            <div className="grid grid-cols-1 gap-6 md:grid-cols-4">
+              <StatCard label="Loss Ratio" value={`${dashboard?.loss_ratio_percent || 0}%`} note="Payouts vs premiums" accent="text-indigo-600" />
+              <StatCard label="Reserve Pool" value={`₹${(dashboard?.reserve_pool || 0).toLocaleString()}`} note="Unspent protection capital" accent="text-emerald-600" />
+              <StatCard label="Total Premiums" value={`₹${(dashboard?.total_premiums_collected || 0).toLocaleString()}`} note="Active revenue" accent="text-sky-600" />
+              <StatCard label="Total Payouts" value={`₹${(dashboard?.total_payouts || 0).toLocaleString()}`} note="Disbursed capital" accent="text-rose-600" />
             </div>
 
-            {/* Trigger & Claims Breakdown */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
-              {/* Claims by Status */}
-              <div className="bg-white rounded-lg p-6 border border-gray-200">
-                <p className="text-lg font-bold text-gray-900 mb-4">Claims by Status</p>
-                <div className="space-y-3">
-                  {dashboard.claims_by_status && Object.entries(dashboard.claims_by_status).map(([status, count]) => (
-                    <div key={status} className="flex items-center justify-between">
-                      <div className="flex items-center gap-2">
-                        <span className={`inline-block px-2 py-1 rounded text-xs font-semibold ${statusBadge[status]}`}>
-                          {status}
-                        </span>
+            <div className="grid grid-cols-1 gap-8 xl:grid-cols-[1.2fr_0.8fr]">
+              <div className="rounded-[36px] border border-slate-200 bg-white p-6 shadow-sm">
+                <div className="mb-6 flex items-center justify-between">
+                  <div>
+                    <p className="text-[10px] font-black uppercase tracking-[0.35em] text-slate-400">India city overview</p>
+                    <h2 className="text-2xl font-black tracking-tight text-slate-900">10-city loss map</h2>
+                  </div>
+                  <div className="rounded-full bg-emerald-50 px-3 py-1 text-[10px] font-black uppercase tracking-[0.25em] text-emerald-700">
+                    {cityMetrics.length} cities live
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 gap-6 lg:grid-cols-[420px_1fr]">
+                  <IndiaCityMap cityMetrics={cityMetrics} selectedCityId={selectedCityId} onCityClick={setSelectedCityId} />
+
+                  <div className="space-y-4">
+                    <div className="rounded-[28px] bg-slate-50 p-5">
+                      <p className="text-[10px] font-black uppercase tracking-[0.3em] text-slate-400">Selected city</p>
+                      <div className="mt-2 flex items-end justify-between">
+                        <div>
+                          <h3 className="text-3xl font-black text-slate-900">{selectedCity?.city_name || 'Bengaluru'}</h3>
+                          <p className="text-sm font-medium text-slate-500">{selectedCity?.state || 'Karnataka'} • {selectedCity?.climate_zone || 'tropical_savanna'}</p>
+                        </div>
+                        <div className="text-right">
+                          <p className="text-[10px] font-black uppercase tracking-[0.3em] text-slate-400">Loss ratio</p>
+                          <p className="text-2xl font-black text-slate-900">{selectedCity?.loss_ratio?.toFixed?.(2) || '0.00'}</p>
+                        </div>
                       </div>
-                      <span className="text-xl font-bold text-gray-900">{count}</span>
                     </div>
-                  ))}
+
+                    <div className="overflow-hidden rounded-[28px] border border-slate-200">
+                      <div className="border-b border-slate-100 bg-slate-50 px-5 py-4">
+                        <p className="text-[10px] font-black uppercase tracking-[0.3em] text-slate-400">City comparison</p>
+                      </div>
+                      <div className="max-h-[420px] overflow-y-auto">
+                        <table className="w-full text-left text-sm">
+                          <thead className="sticky top-0 bg-white">
+                            <tr className="text-[10px] font-black uppercase tracking-[0.28em] text-slate-400">
+                              <th className="px-5 py-4">City</th>
+                              <th className="px-5 py-4">Premium</th>
+                              <th className="px-5 py-4">Claims</th>
+                              <th className="px-5 py-4 text-right">LR</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-slate-100">
+                            {cityMetrics.map((city) => (
+                              <tr
+                                key={city.city_id}
+                                onClick={() => setSelectedCityId(city.city_id)}
+                                className={`cursor-pointer transition-colors ${selectedCityId === city.city_id ? 'bg-indigo-50/60' : 'hover:bg-slate-50'}`}
+                              >
+                                <td className="px-5 py-4">
+                                  <p className="font-bold text-slate-900">{city.city_name}</p>
+                                  <p className="text-[10px] font-bold uppercase tracking-[0.3em] text-slate-400">{city.city_id}</p>
+                                </td>
+                                <td className="px-5 py-4 text-slate-600">{city.premium_range}</td>
+                                <td className="px-5 py-4 text-slate-600">{city.this_week_claims} / {city.total_claims}</td>
+                                <td className="px-5 py-4 text-right font-black">{city.loss_ratio.toFixed(2)}</td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                  </div>
                 </div>
               </div>
 
-              {/* Quick Actions */}
-              <div className="bg-white rounded-lg p-6 border border-gray-200">
-                <p className="text-lg font-bold text-gray-900 mb-4">Quick Actions</p>
-                <button
-                  onClick={() => navigate('/trigger')}
-                  className="w-full bg-teal-600 text-white py-3 rounded-lg hover:bg-teal-700 font-semibold mb-3"
-                >
-                  🚀 Fire Trigger Event
-                </button>
-                <button
-                  onClick={fetchDashboard}
-                  className="w-full bg-blue-600 text-white py-3 rounded-lg hover:bg-blue-700 font-semibold"
-                >
-                  🔄 Refresh Now
-                </button>
+              <div className="space-y-6">
+                <Donut claimsByStatus={claimsByStatus} />
+
+                <div className="rounded-[28px] border border-slate-200 bg-white p-6 shadow-sm">
+                  <p className="text-[10px] font-black uppercase tracking-[0.3em] text-slate-400">Fraud rings</p>
+                  <h3 className="mt-2 text-2xl font-black text-slate-900">{fraudRings.length} active rings</h3>
+                  <div className="mt-4 space-y-3">
+                    {fraudRings.length === 0 ? (
+                      <div className="rounded-2xl bg-emerald-50 px-4 py-3 text-sm font-medium text-emerald-800">No active rings detected.</div>
+                    ) : (
+                      fraudRings.slice(0, 4).map((ring, index) => (
+                        <div key={index} className="rounded-2xl border border-slate-100 bg-slate-50 px-4 py-3">
+                          <div className="flex items-center justify-between">
+                            <p className="text-xs font-black uppercase tracking-[0.25em] text-slate-500">Ring {index + 1}</p>
+                            <p className="text-xs font-black text-rose-600">{ring.ring_size} workers</p>
+                          </div>
+                          <p className="mt-2 text-sm font-medium text-slate-700">{ring.summary || (ring.is_cross_city ? 'Cross-city network' : 'Single-city cluster')}</p>
+                          <div className="mt-3 space-y-2 text-[11px] font-semibold text-slate-500">
+                            <p>Location: {ring.dominant_city_id || (ring.cities_involved || []).join(', ') || 'Unknown'}</p>
+                            <p>Signals: {(ring.suspicious_indicators || []).join(' • ') || 'No shared signals listed'}</p>
+                            <p>Workers: {(ring.worker_details || []).slice(0, 3).map((worker) => worker.worker_id || worker).join(', ')}{(ring.worker_details || []).length > 3 ? ' ...' : ''}</p>
+                          </div>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                </div>
               </div>
             </div>
 
-            {/* Recent Claims */}
-            <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
-              <div className="p-6 border-b border-gray-200">
-                <p className="text-lg font-bold text-gray-900">Recent Claims ({claims.length})</p>
+            <div className="grid grid-cols-1 gap-6 xl:grid-cols-3">
+              <div className="rounded-[28px] border border-slate-200 bg-white p-6 shadow-sm">
+                <p className="text-[10px] font-black uppercase tracking-[0.3em] text-slate-400">Eligibility pool</p>
+                <p className="mt-2 text-3xl font-black text-slate-900">{eligibilityStats?.eligible || 0}</p>
+                <p className="text-sm text-slate-500">Eligible workers</p>
+                <div className="mt-4 grid grid-cols-3 gap-3 text-center text-xs font-black uppercase tracking-[0.25em] text-slate-500">
+                  <div className="rounded-2xl bg-emerald-50 px-3 py-4 text-emerald-700">{eligibilityStats?.eligible || 0}</div>
+                  <div className="rounded-2xl bg-amber-50 px-3 py-4 text-amber-700">{eligibilityStats?.near_threshold || 0}</div>
+                  <div className="rounded-2xl bg-rose-50 px-3 py-4 text-rose-700">{eligibilityStats?.ineligible || 0}</div>
+                </div>
               </div>
-              <div className="overflow-x-auto">
-                <table className="w-full">
-                  <thead className="bg-gray-50 border-b border-gray-200">
-                    <tr>
-                      <th className="px-6 py-3 text-left text-xs font-semibold text-gray-700">Claim ID</th>
-                      <th className="px-6 py-3 text-left text-xs font-semibold text-gray-700">Worker</th>
-                      <th className="px-6 py-3 text-left text-xs font-semibold text-gray-700">Trigger</th>
-                      <th className="px-6 py-3 text-left text-xs font-semibold text-gray-700">Payout</th>
-                      <th className="px-6 py-3 text-left text-xs font-semibold text-gray-700">Status</th>
-                      <th className="px-6 py-3 text-left text-xs font-semibold text-gray-700">Trust</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-gray-200">
-                    {claims.slice(0, 10).map((claim) => (
-                      <tr key={claim.id} className="hover:bg-gray-50">
-                        <td className="px-6 py-3 text-sm font-mono text-gray-600">{claim.id.slice(0, 8)}...</td>
-                        <td className="px-6 py-3 text-sm text-gray-900">{claim.worker_id || '—'}</td>
-                        <td className="px-6 py-3 text-sm text-gray-900">{claim.trigger_type}</td>
-                        <td className="px-6 py-3 text-sm font-bold text-green-600">₹{claim.payout_amount}</td>
-                        <td className="px-6 py-3 text-sm">
-                          <span className={`inline-block px-2 py-1 rounded text-xs font-semibold ${statusBadge[claim.status]}`}>
-                            {claim.status}
-                          </span>
-                        </td>
-                        <td className="px-6 py-3 text-sm">
-                          <div className="w-16 bg-gray-200 rounded-full h-2">
-                            <div
-                              className="h-2 bg-teal-600 rounded-full"
-                              style={{ width: `${(claim.trust_score || 0.5) * 100}%` }}
-                            />
-                          </div>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
+
+              <div className="rounded-[28px] border border-slate-200 bg-white p-6 shadow-sm">
+                <p className="text-[10px] font-black uppercase tracking-[0.3em] text-slate-400">Next week forecast</p>
+                <p className="mt-2 text-3xl font-black text-slate-900">₹{forecast?.expected_claims_next_week?.toLocaleString() || 0}</p>
+                <p className="text-sm text-slate-500">Projected claims outflow</p>
+                <div className="mt-4 rounded-2xl bg-indigo-50 px-4 py-3 text-xs font-medium text-indigo-800">
+                  ± ₹{forecast?.forecast_delta?.toLocaleString() || 0} based on 7-day payout trend
+                </div>
+              </div>
+
+              <div className="rounded-[28px] border border-slate-200 bg-white p-6 shadow-sm">
+                <p className="text-[10px] font-black uppercase tracking-[0.3em] text-slate-400">Zone heatmap</p>
+                <div className="mt-4 grid grid-cols-6 gap-2">
+                  {selectedHeat.slice(0, 18).map((zone) => (
+                    <div
+                      key={zone.zone_id}
+                      className="aspect-square rounded-xl border border-white shadow-sm"
+                      style={{
+                        backgroundColor: zone.zone_risk_score >= 2 ? '#B91C1C' : zone.zone_risk_score >= 1.4 ? '#E8960C' : '#1A7F4B',
+                      }}
+                      title={`${zone.name} • ${zone.zone_risk_score}`}
+                    />
+                  ))}
+                </div>
+                <p className="mt-4 text-xs font-medium text-slate-500">Selected city zones only. Click another city on the map to update.</p>
               </div>
             </div>
-          </>
-        ) : null}
-      </div>
+
+            <div className="rounded-[36px] border border-slate-200 bg-white p-6 shadow-sm">
+              <div className="mb-5 flex flex-wrap items-center justify-between gap-4">
+                <div>
+                  <p className="text-[10px] font-black uppercase tracking-[0.35em] text-slate-400">Weather + AQI outlook</p>
+                  <h3 className="text-2xl font-black tracking-tight text-slate-900">
+                    Next 7 days • {weatherAqiWeek?.city_name || selectedCity?.city_name || 'Selected city'}
+                  </h3>
+                </div>
+              </div>
+
+              {!weatherAqiWeek?.days?.length ? (
+                <div className="rounded-2xl bg-slate-50 px-4 py-6 text-sm font-medium text-slate-500">
+                  Weekly weather and AQI data unavailable.
+                </div>
+              ) : (
+                <div className="overflow-hidden rounded-[24px] border border-slate-200">
+                  <div className="max-h-[420px] overflow-auto">
+                    <table className="w-full text-left text-sm">
+                      <thead className="sticky top-0 bg-white">
+                        <tr className="text-[10px] font-black uppercase tracking-[0.25em] text-slate-400">
+                          <th className="px-4 py-3">Day</th>
+                          <th className="px-4 py-3">Temp</th>
+                          <th className="px-4 py-3">Feels Like</th>
+                          <th className="px-4 py-3">Rain</th>
+                          <th className="px-4 py-3">Rain %</th>
+                          <th className="px-4 py-3">Wind</th>
+                          <th className="px-4 py-3">UV</th>
+                          <th className="px-4 py-3">AQI</th>
+                          <th className="px-4 py-3">PM2.5</th>
+                          <th className="px-4 py-3">PM10</th>
+                          <th className="px-4 py-3">Ozone</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-100">
+                        {weatherAqiWeek.days.map((day) => (
+                          <tr key={day.date} className="hover:bg-slate-50">
+                            <td className="px-4 py-3 font-bold text-slate-900">{formatShortDate(day.date)}</td>
+                            <td className="px-4 py-3 text-slate-700">
+                              {day.temp_max_c ?? '--'}° / {day.temp_min_c ?? '--'}°
+                            </td>
+                            <td className="px-4 py-3 text-slate-700">
+                              {day.feels_like_max_c ?? '--'}° / {day.feels_like_min_c ?? '--'}°
+                            </td>
+                            <td className="px-4 py-3 text-slate-700">{day.rain_mm ?? '--'} mm</td>
+                            <td className="px-4 py-3 text-slate-700">{day.rain_probability_pct ?? '--'}%</td>
+                            <td className="px-4 py-3 text-slate-700">{day.wind_speed_kmh ?? '--'} km/h</td>
+                            <td className="px-4 py-3 text-slate-700">{day.uv_index ?? '--'}</td>
+                            <td className="px-4 py-3">
+                              <span className={`rounded-full px-2 py-1 text-[10px] font-black uppercase tracking-[0.15em] ${getAqiTone(day.aqi_category)}`}>
+                                {day.aqi_max ?? '--'} {day.aqi_category || ''}
+                              </span>
+                            </td>
+                            <td className="px-4 py-3 text-slate-700">{day.pm25_avg ?? '--'}</td>
+                            <td className="px-4 py-3 text-slate-700">{day.pm10_avg ?? '--'}</td>
+                            <td className="px-4 py-3 text-slate-700">{day.ozone_avg ?? '--'}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+      </main>
     </div>
   );
 }

@@ -1,27 +1,4 @@
-version: '3.8'
-
 services:
-  # PostgreSQL Database
-  postgres:
-    image: postgres:15-alpine
-    container_name: gigcare-postgres
-    environment:
-      POSTGRES_DB: gigcare
-      POSTGRES_USER: gigcare_user
-      POSTGRES_PASSWORD: gigcare_pass
-    ports:
-      - "5433:5432"
-    volumes:
-      - postgres_data:/var/lib/postgresql/data
-      - ./database/migrations:/docker-entrypoint-initdb.d
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U gigcare_user"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-    networks:
-      - gigcare-net
-
   # Node.js API Server
   api:
     build:
@@ -29,28 +6,34 @@ services:
       dockerfile: Dockerfile
     container_name: gigcare-api
     ports:
-      - "3001:3001"
+      - "3011:3001"
     environment:
-      DATABASE_URL: postgresql://gigcare_user:gigcare_pass@postgres:5432/gigcare
+      SUPABASE_URL: ${SUPABASE_URL}
+      # Backend-only secret. Set real value in .env as:
+      # SUPABASE_SERVICE_ROLE_KEY=your_supabase_service_role_key_backend_only
+      SUPABASE_SERVICE_ROLE_KEY: ${SUPABASE_SERVICE_ROLE_KEY}
+      SUPABASE_ANON_KEY: ${SUPABASE_ANON_KEY}
+      JWT_SECRET: ${JWT_SECRET}
+      JWT_EXPIRES_IN: ${JWT_EXPIRES_IN}
+      SMTP_HOST: ${SMTP_HOST}
+      SMTP_PORT: ${SMTP_PORT}
+      SMTP_SECURE: ${SMTP_SECURE}
+      SMTP_USER: ${SMTP_USER}
+      SMTP_PASS: ${SMTP_PASS}
+      EMAIL_FROM: ${EMAIL_FROM}
       NODE_ENV: development
-      JWT_SECRET: your_super_secret_jwt_key_here_min_32_chars_change_me_now
-      JWT_EXPIRES_IN: 1h
       RAZORPAY_KEY_ID: ${RAZORPAY_KEY_ID:-none}
       RAZORPAY_KEY_SECRET: ${RAZORPAY_KEY_SECRET:-none}
       RAZORPAY_WEBHOOK_SECRET: ${RAZORPAY_WEBHOOK_SECRET:-none}
-      OPENWEATHER_API_KEY: ${OPENWEATHER_API_KEY:-none}
-      WAQI_TOKEN: ${WAQI_TOKEN:-none}
       ML_PREMIUM_SERVICE_URL: http://ml-premium:5001
-      INTERNAL_SERVICE_KEY: internal_service_key_change_me
+      FRAUD_SERVICE_URL: http://ml-fraud:5002
+      INTERNAL_SERVICE_KEY: ${INTERNAL_SERVICE_KEY}
       PORT: 3001
-      CORS_ORIGIN: http://localhost:3000
-      USE_MOCK_DATA: "true"
-    depends_on:
-      postgres:
-        condition: service_healthy
-    volumes:
-      - ./services/api:/app
-      - /app/node_modules
+      CORS_ORIGIN: http://localhost:3010
+      USE_MOCK_DATA: ${USE_MOCK_DATA:-false}
+    # volumes:
+    #   - ./services/api:/app
+    #   - /app/node_modules
     networks:
       - gigcare-net
 
@@ -70,21 +53,21 @@ services:
     networks:
       - gigcare-net
 
-  # ML Fraud Detection Service (Phase 3)
-  # ml-fraud:
-  #   build:
-  #     context: ./services/ml/fraud_service
-  #     dockerfile: Dockerfile
-  #   container_name: gigcare-ml-fraud
-  #   ports:
-  #     - "5002:5002"
-  #   environment:
-  #     FLASK_ENV: development
-  #     FLASK_APP: app.py
-  #   volumes:
-  #     - ./services/ml/fraud_service:/app
-  #   networks:
-  #     - gigcare-net
+  # ML Fraud Detection Service
+  ml-fraud:
+    build:
+      context: ./services/ml/fraud_service
+      dockerfile: Dockerfile
+    container_name: gigcare-ml-fraud
+    ports:
+      - "5002:5002"
+    environment:
+      FLASK_ENV: development
+      FLASK_APP: app.py
+    volumes:
+      - ./services/ml/fraud_service:/app
+    networks:
+      - gigcare-net
 
   # Trigger Engine (Background Jobs)
   trigger-engine:
@@ -93,24 +76,57 @@ services:
       dockerfile: Dockerfile
     container_name: gigcare-trigger-engine
     environment:
-      DATABASE_URL: postgresql://gigcare_user:gigcare_pass@postgres:5432/gigcare
+      SUPABASE_URL: ${SUPABASE_URL}
+      # Backend-only secret. Set real value in .env as:
+      # SUPABASE_SERVICE_ROLE_KEY=your_supabase_service_role_key_backend_only
+      SUPABASE_SERVICE_ROLE_KEY: ${SUPABASE_SERVICE_ROLE_KEY}
+      SUPABASE_ANON_KEY: ${SUPABASE_ANON_KEY}
       NODE_ENV: development
       API_URL: http://api:3001
-      INTERNAL_SERVICE_KEY: internal_service_key_change_me
-      OPENWEATHER_API_KEY: ${OPENWEATHER_API_KEY:-none}
-      WAQI_TOKEN: ${WAQI_TOKEN:-none}
-      USE_MOCK_DATA: "true"
+      INTERNAL_SERVICE_KEY: ${INTERNAL_SERVICE_KEY}
+      OPENWEATHER_API_KEY: ${OPENWEATHER_API_KEY}
+      WAQI_TOKEN: ${WAQI_TOKEN}
+      USE_MOCK_DATA: ${USE_MOCK_DATA:-false}
     depends_on:
-      - postgres
       - api
+      - ml-fraud
     volumes:
       - ./services/trigger-engine:/app
       - /app/node_modules
     networks:
       - gigcare-net
 
-volumes:
-  postgres_data:
+  # Frontend: Worker Application
+  worker-app:
+    build:
+      context: ./apps/worker
+      dockerfile: Dockerfile
+    container_name: gigcare-worker
+    ports:
+      - "3010:3010"
+    environment:
+      - PORT=3010
+      - REACT_APP_API_URL=http://localhost:3011/api
+    depends_on:
+      - api
+    networks:
+      - gigcare-net
+
+  # Frontend: Admin Application
+  admin-app:
+    build:
+      context: ./apps/admin
+      dockerfile: Dockerfile
+    container_name: gigcare-admin
+    ports:
+      - "3013:3013"
+    environment:
+      - PORT=3013
+      - REACT_APP_API_URL=http://localhost:3011/api
+    depends_on:
+      - api
+    networks:
+      - gigcare-net
 
 networks:
   gigcare-net:

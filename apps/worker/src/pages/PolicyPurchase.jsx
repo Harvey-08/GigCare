@@ -3,17 +3,30 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { apiClient } from '../services/api';
 
-export default function PolicyPurchase({ worker }) {
+function toLocalISODate(value = new Date()) {
+  const date = value instanceof Date ? value : new Date(value);
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
+export default function PolicyPurchase({ profile, onLogout }) {
   const navigate = useNavigate();
   const [premium, setPremium] = useState(null);
   const [zones, setZones] = useState([]);
-  const [selectedZone, setSelectedZone] = useState(worker?.zone_id || 'zone_01');
+  const [cityZones, setCityZones] = useState([]);
+  const [selectedZone, setSelectedZone] = useState(profile?.zone_id || 'zone_01');
+  const [selectedTier, setSelectedTier] = useState(null);
   const [loading, setLoading] = useState(false);
+  const [locating, setLocating] = useState(false);
+  const [currentCoords, setCurrentCoords] = useState(null);
+  const [resolvedLocation, setResolvedLocation] = useState(null);
   const [purchasing, setPurchasing] = useState(false);
   const [error, setError] = useState('');
 
   useEffect(() => {
-    fetchZones();
+    detectLocation();
   }, []);
 
   useEffect(() => {
@@ -22,10 +35,64 @@ export default function PolicyPurchase({ worker }) {
     }
   }, [selectedZone]);
 
-  const fetchZones = async () => {
+  const detectLocation = () => {
+    if (!navigator.geolocation) {
+      console.warn('Geolocation not supported');
+      fetchZones(); // Fallback to profile zone
+      return;
+    }
+
+    setLocating(true);
+    navigator.geolocation.getCurrentPosition(
+      async (position) => {
+        const { latitude, longitude } = position.coords;
+        setCurrentCoords({ latitude, longitude });
+        
+        try {
+          const res = await apiClient.get('/zones/resolve', {
+            params: { lat: latitude, lon: longitude }
+          });
+          const resolved = res.data.data;
+          setResolvedLocation(resolved);
+          
+          if (resolved.zone_id) {
+            setSelectedZone(resolved.zone_id);
+          }
+          
+          // Re-fetch zones for the resolved city
+          await fetchZones(resolved.city_name || resolved.nearest_city_name);
+        } catch (err) {
+          console.error('Location resolution failed:', err);
+          fetchZones();
+        } finally {
+          setLocating(false);
+        }
+      },
+      (err) => {
+        console.error('Geolocation error:', err);
+        setLocating(false);
+        fetchZones(); // Fallback
+      },
+      { timeout: 10000 }
+    );
+  };
+
+  const fetchZones = async (cityName) => {
     try {
       const res = await apiClient.get('/zones');
-      setZones(res.data.data || []);
+      const allZones = res.data.data || [];
+      setZones(allZones);
+
+      const targetCity = cityName || allZones.find((zone) => zone.zone_id === profile?.zone_id)?.city;
+      const filteredZones = targetCity
+        ? allZones.filter((zone) => zone.city === targetCity)
+        : allZones;
+
+      setCityZones(filteredZones);
+
+      if (filteredZones.length > 0 && !filteredZones.find((zone) => zone.zone_id === selectedZone)) {
+        setSelectedZone(filteredZones[0].zone_id);
+      }
     } catch (err) {
       console.error('Failed to fetch zones:', err.message);
     }
@@ -35,16 +102,22 @@ export default function PolicyPurchase({ worker }) {
     try {
       setLoading(true);
       setError('');
-      const now = new Date();
-      const weekStart = new Date(now.getTime() - now.getDay() * 24 * 60 * 60 * 1000);
+      const coverageStart = toLocalISODate(new Date());
       
       const res = await apiClient.post('/premiums/calculate', {
         zone_id: selectedZone,
-        week_start: weekStart.toISOString().split('T')[0],
+        week_start: coverageStart,
+        centroid_lat: currentCoords?.latitude,
+        centroid_lon: currentCoords?.longitude,
       });
 
       setPremium(res.data.data);
+      setSelectedTier(res.data.data.recommended_tier || 'STANDARD');
     } catch (err) {
+      if (err.response?.status === 404 && err.response?.data?.error === 'Profile not found') {
+        if (onLogout) onLogout();
+        return;
+      }
       setError(err.response?.data?.error || 'Failed to calculate premium');
     } finally {
       setLoading(false);
@@ -57,22 +130,41 @@ export default function PolicyPurchase({ worker }) {
     try {
       setPurchasing(true);
       setError('');
+      const tier = selectedTier || premium.coverage_tier;
 
       // Step 1: Create policy
       const policyRes = await apiClient.post('/policies', {
         quote_id: premium.quote_id,
-        coverage_tier: premium.coverage_tier,
+        coverage_tier: tier,
       });
 
-      const policyId = policyRes.data.data.id;
+      const policyId = policyRes.data?.data?.policy_id || policyRes.data?.data?.id;
+      if (!policyId) {
+        throw new Error('Policy ID missing from purchase response');
+      }
 
-      // Step 2: Simulate Razorpay payment
+      // Step 2: Simulate Razorpay payment / activation
       await apiClient.post(`/policies/${policyId}/activate`);
+
+      // Step 3: Synchronize profile location (Ensure triggers find this worker in the new zone)
+      if (currentCoords) {
+        await apiClient.post(`/workers/${profile.id}/location`, {
+          lat: currentCoords.latitude,
+          lon: currentCoords.longitude
+        });
+      }
 
       // Success
       navigate('/');
     } catch (err) {
-      setError(err.response?.data?.error || 'Failed to purchase policy');
+      if (err.response?.status === 409 && err.response?.data?.code === 'POLICY_ALREADY_EXISTS') {
+        const existing = err.response?.data?.data;
+        setError(
+          `You already have a ${existing?.status?.toLowerCase() || 'valid'} policy for ${existing?.week_start || 'this period'} to ${existing?.week_end || ''}.`
+        );
+      } else {
+        setError(err.response?.data?.error || 'Failed to purchase policy');
+      }
     } finally {
       setPurchasing(false);
     }
@@ -84,7 +176,7 @@ export default function PolicyPurchase({ worker }) {
     PREMIUM: { color: 'from-purple-500 to-purple-600', triggers: 3, maxPayout: 1800 },
   };
 
-  const zone = zones.find((z) => z.zone_id === selectedZone);
+  const zone = cityZones.find((z) => z.zone_id === selectedZone) || zones.find((z) => z.zone_id === selectedZone);
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -103,10 +195,15 @@ export default function PolicyPurchase({ worker }) {
         {/* Zone Selector */}
         <div>
           <label className="block text-sm font-semibold text-gray-700 mb-3">
-            Select Your Zone
+            Location: <span className="text-teal-600 font-bold">{resolvedLocation?.display_name || resolvedLocation?.city_name || zone?.city || 'Detecting...'}</span>
           </label>
+          {locating && (
+            <div className="flex items-center gap-2 mb-3 text-indigo-600 bg-indigo-50 p-2 rounded-lg border border-indigo-100 italic text-xs animate-pulse">
+              <span>📍 Detecting live location...</span>
+            </div>
+          )}
           <div className="grid grid-cols-2 gap-3">
-            {zones.map((z) => (
+            {cityZones.map((z) => (
               <button
                 key={z.zone_id}
                 onClick={() => setSelectedZone(z.zone_id)}
@@ -116,7 +213,11 @@ export default function PolicyPurchase({ worker }) {
                     : 'border-gray-200 bg-white hover:border-gray-300'
                 }`}
               >
-                <p className="font-semibold text-sm text-gray-900">{z.name}</p>
+                <p className="font-semibold text-sm text-gray-900">
+                  {resolvedLocation?.mode === 'FALLBACK' 
+                    ? (resolvedLocation.city || resolvedLocation.nearest_city_name) 
+                    : z.name}
+                </p>
                 <p className="text-xs text-gray-500">Risk: {z.zone_risk_score.toFixed(2)}</p>
               </button>
             ))}
@@ -142,21 +243,23 @@ export default function PolicyPurchase({ worker }) {
             </div>
 
             {/* Coverage Tier */}
-            <div className={`bg-gradient-to-r ${tierInfo[premium.coverage_tier]?.color} rounded-lg p-6 text-white`}>
+            <div className={`bg-gradient-to-r ${tierInfo[premium.recommended_tier]?.color} rounded-lg p-6 text-white`}>
               <p className="text-sm font-medium opacity-90 mb-2">Recommended Coverage</p>
               <p className="text-4xl font-bold">₹{premium.premium_rupees}</p>
-              <p className="text-sm opacity-90 mt-2">{premium.coverage_tier}</p>
+              <p className="text-sm opacity-90 mt-2">{premium.recommended_tier}</p>
             </div>
 
             {/* Plan Details */}
             <div className="space-y-3">
               {['SEED', 'STANDARD', 'PREMIUM'].map((tier) => (
-                <div
+                <button
                   key={tier}
-                  className={`border-2 rounded-lg p-4 cursor-pointer transition-colors ${
-                    premium.coverage_tier === tier
+                  type="button"
+                  onClick={() => setSelectedTier(tier)}
+                  className={`w-full text-left border-2 rounded-lg p-4 transition-colors ${
+                    selectedTier === tier
                       ? 'border-teal-600 bg-teal-50'
-                      : 'border-gray-200 bg-white'
+                      : 'border-gray-200 bg-white hover:border-gray-300'
                   }`}
                 >
                   <div className="flex items-start justify-between">
@@ -168,14 +271,14 @@ export default function PolicyPurchase({ worker }) {
                     </div>
                     <div className="text-right">
                       <p className="text-lg font-bold text-gray-900">
-                        ₹{tier === 'SEED' ? 80 : tier === 'STANDARD' ? 162 : 220}
+                        ₹{premium.tiers?.[tier]?.premium || (tier === 'SEED' ? 80 : tier === 'STANDARD' ? 162 : 220)}
                       </p>
                       <p className="text-xs text-gray-500">
-                        Max: ₹{tier === 'SEED' ? 600 : tier === 'STANDARD' ? 1200 : 1800}
+                        Max: ₹{premium.tiers?.[tier]?.max_payout || (tier === 'SEED' ? 600 : tier === 'STANDARD' ? 1200 : 1800)}
                       </p>
                     </div>
                   </div>
-                </div>
+                </button>
               ))}
             </div>
 

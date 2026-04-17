@@ -27,15 +27,15 @@ async function getRainfall(lat, lon) {
       params: {
         latitude: lat,
         longitude: lon,
-        hourly: 'precipitation',
+        daily: 'precipitation_sum',
+        forecast_days: 1,
         timezone: 'Asia/Kolkata',
       },
       timeout: 5000,
     });
 
-    const data = response.data.hourly.precipitation;
-    const rainfall = data.reduce((a, b) => a + b, 0) / data.length;
-    return rainfall;
+    const rainfall = response.data.daily?.precipitation_sum || [];
+    return rainfall.reduce((sum, value) => sum + (value || 0), 0);
   } catch (err) {
     console.error(`OpenMeteo error for (${lat}, ${lon}): ${err.message}`);
     return 0; // Safe default

@@ -1,149 +1,272 @@
 // services/api/models/db.js
-// PostgreSQL client and query helpers - Person A
-// Usage: const db = require('./models/db'); await db.query('SELECT * FROM workers WHERE id = $1', [id])
-
-const { Pool } = require('pg');
-require('dotenv').config();
-
-const pool = new Pool({
-  connectionString: process.env.DATABASE_URL,
-  max: 20,
-  idleTimeoutMillis: 30000,
-  connectionTimeoutMillis: 2000,
-});
-
-pool.on('error', (err) => {
-  console.error('Unexpected error on idle client', err);
-  process.exit(-1);
-});
+const supabase = require('./supabase');
 
 // =====================================================
-// QUERY HELPER
+// QUERY HELPER (Compatibility Layer)
 // =====================================================
-async function query(text, params = []) {
-  const start = Date.now();
-  try {
-    const result = await pool.query(text, params);
-    const duration = Date.now() - start;
-    if (duration > 100) console.log(`[SLOW QUERY ${duration}ms]`, text.substring(0, 50));
-    return result;
-  } catch (error) {
-    console.error('Database query error:', error.message);
-    throw error;
-  }
+async function query(table, action, data = {}) {
+  // This is a simplified helper to mimic the old query style if needed
+  // But it's better to use Supabase client directly
+  console.log(`[SUPABASE ${action}] on ${table}`);
+  return null; 
 }
 
 // =====================================================
-// TRANSACTION HELPER
+// REFACTORED EXPORTED QUERIES
 // =====================================================
-async function transaction(callback) {
-  const client = await pool.connect();
-  try {
-    await client.query('BEGIN');
-    const result = await callback(client);
-    await client.query('COMMIT');
-    return result;
-  } catch (error) {
-    await client.query('ROLLBACK');
-    throw error;
-  } finally {
-    client.release();
+
+// PROFILES (Replaces Workers/Admins)
+const getProfile = async (id) => {
+  return await supabase.from('profiles').select('*').eq('id', id).single();
+};
+
+const getProfileByEmail = async (email) => {
+  const normalizedEmail = String(email || '').trim().toLowerCase();
+  if (!normalizedEmail) {
+    return null;
   }
-}
 
-// =====================================================
-// EXPORTED QUERIES (examples - expand as needed)
-// =====================================================
+  const { data, error } = await supabase
+    .from('profiles')
+    .select('*')
+    .eq('email', normalizedEmail)
+    .limit(1);
 
-// WORKERS
-const getWorker = (id) => query('SELECT * FROM workers WHERE worker_id = $1', [id]);
-const createWorker = (id, name, phone, platform, zone_id) =>
-  query(
-    'INSERT INTO workers (worker_id, name, phone, platform, zone_id, trust_score) VALUES ($1, $2, $3, $4, $5, 1.0) RETURNING *',
-    [id, name, phone, platform, zone_id]
-  );
+  if (error) {
+    throw error;
+  }
+
+  return data?.[0] || null;
+};
+
+const getProfileByEmailOrPhone = async (email, phone) => {
+  const normalizedEmail = String(email || '').trim().toLowerCase();
+  const normalizedPhone = String(phone || '').trim();
+
+  if (normalizedEmail) {
+    const { data, error } = await supabase
+      .from('profiles')
+      .select('*')
+      .eq('email', normalizedEmail)
+      .limit(1);
+
+    if (error) {
+      throw error;
+    }
+
+    if (data?.[0]) {
+      return data[0];
+    }
+  }
+
+  if (!normalizedPhone) {
+    return null;
+  }
+
+  const { data, error } = await supabase
+    .from('profiles')
+    .select('*')
+    .eq('phone', normalizedPhone)
+    .limit(1);
+
+  if (error) {
+    throw error;
+  }
+
+  return data?.[0] || null;
+};
+
+const createProfile = async (profile) => {
+  const payload = {
+    ...profile,
+    email: String(profile?.email || '').trim().toLowerCase(),
+    phone: String(profile?.phone || '').trim(),
+  };
+
+  return await supabase.from('profiles').insert(payload).select().single();
+};
+
+const updateProfile = async (id, updates) => {
+  return await supabase.from('profiles').update(updates).eq('id', id).select().single();
+};
 
 // ZONES
-const getZones = () => query('SELECT * FROM zones ORDER BY zone_risk_score ASC');
-const getZone = (zone_id) => query('SELECT * FROM zones WHERE zone_id = $1', [zone_id]);
+const getZones = async () => {
+  return await supabase.from('zones').select('*').order('zone_risk_score', { ascending: true });
+};
+
+const getZone = async (zone_id) => {
+  return await supabase.from('zones').select('*').eq('zone_id', zone_id).single();
+};
 
 // POLICIES
-const createPolicy = (policy_id, worker_id, quote_id, tier, premium, max_payout, week_start, week_end) =>
-  query(
-    `INSERT INTO policies (policy_id, worker_id, quote_id, coverage_tier, premium_paid, max_payout, week_start, week_end, status)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'PENDING_PAYMENT') RETURNING *`,
-    [policy_id, worker_id, quote_id, tier, premium, max_payout, week_start, week_end]
-  );
+const createPolicy = async (user_id, tier, premium, max_payout, week_start, week_end) => {
+  return await supabase.from('policies').insert({
+    user_id,
+    coverage_tier: tier,
+    premium_paid: premium,
+    max_payout: max_payout,
+    week_start,
+    week_end,
+    status: 'PENDING_PAYMENT'
+  }).select().single();
+};
 
-const getPolicy = (policy_id) => query('SELECT * FROM policies WHERE policy_id = $1', [policy_id]);
+const activatePolicy = async (policy_id, payment_id) => {
+  const variants = [
+    {
+      status: 'ACTIVE',
+      razorpay_payment_id: payment_id,
+      updated_at: new Date().toISOString(),
+    },
+    {
+      status: 'ACTIVE',
+      updated_at: new Date().toISOString(),
+    },
+    {
+      status: 'ACTIVE',
+      razorpay_payment_id: payment_id,
+    },
+    {
+      status: 'ACTIVE',
+    },
+  ];
 
-const getPoliciesForWorker = (worker_id) =>
-  query('SELECT * FROM policies WHERE worker_id = $1 ORDER BY created_at DESC', [worker_id]);
+  const keyColumns = ['policy_id', 'id'];
+  let lastError = null;
 
-const activatePolicy = (policy_id, razorpay_payment_id) =>
-  query('UPDATE policies SET status = $1, razorpay_payment_id = $2, updated_at = NOW() WHERE policy_id = $3 RETURNING *', [
-    'ACTIVE',
-    razorpay_payment_id,
-    policy_id,
-  ]);
+  for (const keyColumn of keyColumns) {
+    for (const payload of variants) {
+      const result = await supabase
+        .from('policies')
+        .update(payload)
+        .eq(keyColumn, policy_id)
+        .select()
+        .single();
+
+      if (!result.error) {
+        return result;
+      }
+
+      lastError = result.error;
+    }
+  }
+
+  return { data: null, error: lastError };
+};
+
+const getPoliciesForUser = async (user_id) => {
+  return await supabase.from('policies').select('*').eq('user_id', user_id).order('created_at', { ascending: false });
+};
 
 // CLAIMS
-const createClaim = (claim_id, policy_id, worker_id, event_id, trigger_type, trigger_value, hours, payout, trust_score, status) =>
-  query(
-    `INSERT INTO claims (claim_id, policy_id, worker_id, trigger_event_id, trigger_type, trigger_value, disruption_start, disruption_end, disruption_hours, raw_payout, final_payout, trust_score, status)
-     VALUES ($1, $2, $3, $4, $5, $6, NOW() - INTERVAL '1 hour', NOW(), $7, $8, $8, $9, $10) RETURNING *`,
-    [claim_id, policy_id, worker_id, event_id, trigger_type, trigger_value, hours, payout, trust_score, status]
-  );
+const createClaim = async (policy_id, user_id, event_id, trigger_type, payout, trust_score, status) => {
+  return await supabase.from('claims').insert({
+    policy_id,
+    user_id,
+    trigger_event_id: event_id,
+    trigger_type,
+    final_payout: payout,
+    trust_score,
+    status
+  }).select().single();
+};
 
-const getClaim = (claim_id) => query('SELECT * FROM claims WHERE claim_id = $1', [claim_id]);
+const updateClaimStatus = async (claim_id, status, payout_id = null) => {
+  const updates = {
+    status,
+    updated_at: new Date().toISOString()
+  };
 
-const getClaimsForWorker = (worker_id) =>
-  query('SELECT * FROM claims WHERE worker_id = $1 ORDER BY created_at DESC', [worker_id]);
+  if (payout_id) {
+    updates.razorpay_payout_id = payout_id;
+  }
 
-const getActivePoliciesInZone = (zone_id, current_date) =>
-  query(
-    'SELECT * FROM policies WHERE status = $1 AND week_start <= $2 AND week_end >= $2 AND worker_id IN (SELECT worker_id FROM workers WHERE zone_id = $3)',
-    ['ACTIVE', current_date, zone_id]
-  );
+  return await supabase
+    .from('claims')
+    .update(updates)
+    .eq('claim_id', claim_id)
+    .select()
+    .single();
+};
 
-const updateClaimStatus = (claim_id, status, payout_id = null) =>
-  query(
-    'UPDATE claims SET status = $1, razorpay_payout_id = $2, updated_at = NOW() WHERE claim_id = $3 RETURNING *',
-    [status, payout_id, claim_id]
-  );
+const getClaimsForUser = async (user_id) => {
+  return await supabase
+    .from('claims')
+    .select('*')
+    .or(`user_id.eq.${user_id},worker_id.eq.${user_id}`)
+    .order('created_at', { ascending: false });
+};
+
+const getActivePoliciesInZone = async (zone_id, current_date) => {
+  // Complex join: policies for workers in a specific zone
+  const { data, error } = await supabase
+    .from('policies')
+    .select('*, profiles!inner(zone_id)')
+    .eq('status', 'ACTIVE')
+    .lte('week_start', current_date)
+    .gte('week_end', current_date)
+    .eq('profiles.zone_id', zone_id);
+  
+  return { data, error };
+};
+
+const getActivePoliciesInCity = async (cityName, current_date) => {
+  try {
+    // 1. Fetch all zone_ids belonging to this city
+    const { data: zonesData, error: zonesError } = await supabase
+      .from('zones')
+      .select('zone_id')
+      .eq('city', cityName);
+
+    if (zonesError || !zonesData || zonesData.length === 0) {
+      return { data: [], error: zonesError };
+    }
+
+    const zoneIds = zonesData.map(z => z.zone_id);
+
+    // 2. Fetch all active policies where profiles match those zone_ids
+    const { data, error } = await supabase
+      .from('policies')
+      .select('*, profiles!inner(zone_id)')
+      .eq('status', 'ACTIVE')
+      .lte('week_start', current_date)
+      .gte('week_end', current_date)
+      .in('profiles.zone_id', zoneIds);
+    
+    return { data, error };
+  } catch (err) {
+    return { data: null, error: err };
+  }
+};
 
 // TRIGGER EVENTS
-const createTriggerEvent = (event_id, zone_id, trigger_type, trigger_value, severity, multiplier, dropped) =>
-  query(
-    `INSERT INTO trigger_events (event_id, zone_id, trigger_type, trigger_value, severity_factor, peak_multiplier, order_drop_percentage, started_at, ended_at, event_status)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, NOW(), NOW() + INTERVAL '1 hour', 'ACTIVE') RETURNING *`,
-    [event_id, zone_id, trigger_type, trigger_value, severity, multiplier, dropped]
-  );
+const createTriggerEvent = async (zone_id, trigger_type, trigger_value, severity) => {
+  return await supabase.from('trigger_events').insert({
+    zone_id,
+    trigger_type,
+    trigger_value,
+    severity_factor: severity,
+    event_status: 'ACTIVE'
+  }).select().single();
+};
 
-// =====================================================
-// EXPORTS
-// =====================================================
 module.exports = {
-  query,
-  transaction,
-  pool,
-  // Workers
-  getWorker,
-  createWorker,
-  // Zones
+  getProfile,
+  getProfileByEmail,
+  getProfileByEmailOrPhone,
+  createProfile,
+  updateProfile,
   getZones,
   getZone,
-  // Policies
   createPolicy,
-  getPolicy,
-  getPoliciesForWorker,
   activatePolicy,
-  // Claims
+  getPoliciesForUser,
   createClaim,
-  getClaim,
-  getClaimsForWorker,
-  getActivePoliciesInZone,
   updateClaimStatus,
-  // Trigger Events
+  getClaimsForUser,
+  getActivePoliciesInZone,
+  getActivePoliciesInCity,
   createTriggerEvent,
+  supabase // Export client for direct use
 };

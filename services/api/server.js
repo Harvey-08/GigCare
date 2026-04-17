@@ -6,13 +6,40 @@ const cors = require('cors');
 require('dotenv').config();
 
 const app = express();
+const { seedAllCityZones } = require('./startup/seed-zones');
 
 // =====================================================
 // MIDDLEWARE
 // =====================================================
-app.use(cors({ origin: process.env.CORS_ORIGIN || 'http://localhost:3000' }));
+const allowedOrigins = [
+  'http://localhost:3010',
+  'http://localhost:3013',
+  process.env.CORS_ORIGIN
+].filter(Boolean);
+
+app.use(cors({
+  origin: function (origin, callback) {
+    if (!origin || allowedOrigins.indexOf(origin) !== -1) {
+      callback(null, true);
+    } else {
+      callback(new Error('Not allowed by CORS'));
+    }
+  },
+  credentials: true
+}));
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
+
+// Request Logger
+app.use((req, res, next) => {
+  console.log(`[${new Date().toISOString()}] ${req.method} ${req.url}`);
+  if (req.headers.authorization) {
+    console.log(`  Auth: ${req.headers.authorization.substring(0, 20)}...`);
+  } else {
+    console.log('  Auth: NONE');
+  }
+  next();
+});
 
 // =====================================================
 // ROUTES
@@ -22,6 +49,8 @@ app.use('/api/zones', require('./routes/zones'));
 app.use('/api/premiums', require('./routes/premiums'));
 app.use('/api/policies', require('./routes/policies'));
 app.use('/api/claims', require('./routes/claims'));
+app.use('/api/fraud', require('./routes/fraud'));
+app.use('/api/workers', require('./routes/workers'));
 app.use('/api/admin', require('./routes/admin'));
 app.use('/api/webhooks', require('./routes/webhooks'));
 
@@ -48,10 +77,18 @@ app.use((err, req, res, next) => {
 // START SERVER
 // =====================================================
 const PORT = process.env.PORT || 3001;
-app.listen(PORT, () => {
-  console.log(`🚀 GigCare API running on port ${PORT}`);
-  console.log(`📊 Database: ${process.env.DATABASE_URL.split('@')[1]}`);
-  console.log(`🔑 JWT Secret: ${process.env.JWT_SECRET ? '✓ Set' : '✗ Missing'}`);
-});
+
+if (require.main === module) {
+  app.listen(PORT, () => {
+    console.log(`🚀 GigCare API + Supabase running on port ${PORT}`);
+    console.log(`📊 Supabase Project: ${process.env.SUPABASE_URL}`);
+
+    if (process.env.AUTO_SEED_ZONES === 'true') {
+      seedAllCityZones().catch((error) => {
+        console.error('Zone seeding failed:', error);
+      });
+    }
+  });
+}
 
 module.exports = app;

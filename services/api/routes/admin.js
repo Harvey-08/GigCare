@@ -1,61 +1,271 @@
 // services/api/routes/admin.js
-// Admin endpoints - Person A
-
 const express = require('express');
 const axios = require('axios');
 const { v4: uuidv4 } = require('uuid');
 const db = require('../models/db');
+const claimStore = require('../models/claimStore');
 const { authMiddleware } = require('../middleware/auth');
+const supabase = require('../models/supabase');
+const jwt = require('jsonwebtoken');
+const { CITY_CONFIGS } = require('../config/cities');
 
 const router = express.Router();
 
 const API_URL = process.env.API_URL || 'http://localhost:3001';
 const INTERNAL_SERVICE_KEY = process.env.INTERNAL_SERVICE_KEY;
+const FRAUD_SERVICE_URL = process.env.FRAUD_SERVICE_URL || 'http://localhost:5002';
+
+function dedupeClaims(primary = [], secondary = []) {
+  const map = new Map();
+
+  for (const claim of [...primary, ...secondary]) {
+    const key = claim.claim_id || `${claim.policy_id}_${claim.trigger_event_id}_${claim.created_at || ''}`;
+    if (!map.has(key)) {
+      map.set(key, claim);
+    }
+  }
+
+  return Array.from(map.values());
+}
+
+function getAqiCategory(aqi) {
+  if (!Number.isFinite(aqi)) return 'UNKNOWN';
+  if (aqi <= 50) return 'GOOD';
+  if (aqi <= 100) return 'MODERATE';
+  if (aqi <= 150) return 'UNHEALTHY_FOR_SENSITIVE';
+  if (aqi <= 200) return 'UNHEALTHY';
+  if (aqi <= 300) return 'VERY_UNHEALTHY';
+  return 'HAZARDOUS';
+}
+
+async function fetchCityWeatherAqiWeek(cityConfig) {
+  const lat = cityConfig.centroid_lat;
+  const lon = cityConfig.centroid_lon;
+
+  const [weatherRes, airRes] = await Promise.all([
+    axios.get('https://api.open-meteo.com/v1/forecast', {
+      params: {
+        latitude: lat,
+        longitude: lon,
+        timezone: 'Asia/Kolkata',
+        forecast_days: 7,
+        daily: [
+          'weather_code',
+          'temperature_2m_max',
+          'temperature_2m_min',
+          'apparent_temperature_max',
+          'apparent_temperature_min',
+          'precipitation_sum',
+          'precipitation_probability_max',
+          'wind_speed_10m_max',
+          'uv_index_max',
+        ].join(','),
+      },
+      timeout: 7000,
+    }),
+    axios.get('https://air-quality-api.open-meteo.com/v1/air-quality', {
+      params: {
+        latitude: lat,
+        longitude: lon,
+        timezone: 'Asia/Kolkata',
+        forecast_days: 7,
+        hourly: ['us_aqi', 'pm2_5', 'pm10', 'ozone'].join(','),
+      },
+      timeout: 7000,
+    }),
+  ]);
+
+  const weatherDaily = weatherRes.data?.daily || {};
+  const airHourly = airRes.data?.hourly || {};
+
+  const hourlyTimes = airHourly.time || [];
+  const hourlyAqi = airHourly.us_aqi || [];
+  const hourlyPm25 = airHourly.pm2_5 || [];
+  const hourlyPm10 = airHourly.pm10 || [];
+  const hourlyOzone = airHourly.ozone || [];
+
+  const dailyAqiMap = {};
+  for (let index = 0; index < hourlyTimes.length; index += 1) {
+    const timestamp = hourlyTimes[index];
+    const day = typeof timestamp === 'string' ? timestamp.slice(0, 10) : null;
+    if (!day) continue;
+
+    dailyAqiMap[day] = dailyAqiMap[day] || {
+      aqi: [],
+      pm25: [],
+      pm10: [],
+      ozone: [],
+    };
+
+    const aqiValue = Number(hourlyAqi[index]);
+    const pm25Value = Number(hourlyPm25[index]);
+    const pm10Value = Number(hourlyPm10[index]);
+    const ozoneValue = Number(hourlyOzone[index]);
+
+    if (Number.isFinite(aqiValue)) dailyAqiMap[day].aqi.push(aqiValue);
+    if (Number.isFinite(pm25Value)) dailyAqiMap[day].pm25.push(pm25Value);
+    if (Number.isFinite(pm10Value)) dailyAqiMap[day].pm10.push(pm10Value);
+    if (Number.isFinite(ozoneValue)) dailyAqiMap[day].ozone.push(ozoneValue);
+  }
+
+  const days = weatherDaily.time || [];
+  return days.map((day, index) => {
+    const aqiBucket = dailyAqiMap[day] || { aqi: [], pm25: [], pm10: [], ozone: [] };
+    const maxAqi = aqiBucket.aqi.length ? Math.max(...aqiBucket.aqi) : null;
+    const avgAqi = aqiBucket.aqi.length
+      ? Number((aqiBucket.aqi.reduce((sum, value) => sum + value, 0) / aqiBucket.aqi.length).toFixed(1))
+      : null;
+
+    const average = (values) => (
+      values.length
+        ? Number((values.reduce((sum, value) => sum + value, 0) / values.length).toFixed(1))
+        : null
+    );
+
+    return {
+      date: day,
+      weather_code: weatherDaily.weather_code?.[index] ?? null,
+      temp_max_c: weatherDaily.temperature_2m_max?.[index] ?? null,
+      temp_min_c: weatherDaily.temperature_2m_min?.[index] ?? null,
+      feels_like_max_c: weatherDaily.apparent_temperature_max?.[index] ?? null,
+      feels_like_min_c: weatherDaily.apparent_temperature_min?.[index] ?? null,
+      rain_mm: weatherDaily.precipitation_sum?.[index] ?? null,
+      rain_probability_pct: weatherDaily.precipitation_probability_max?.[index] ?? null,
+      wind_speed_kmh: weatherDaily.wind_speed_10m_max?.[index] ?? null,
+      uv_index: weatherDaily.uv_index_max?.[index] ?? null,
+      aqi_avg: avgAqi,
+      aqi_max: maxAqi,
+      aqi_category: getAqiCategory(maxAqi),
+      pm25_avg: average(aqiBucket.pm25),
+      pm10_avg: average(aqiBucket.pm10),
+      ozone_avg: average(aqiBucket.ozone),
+    };
+  });
+}
+
+// =====================================================
+// POST /api/admin/login
+// Fixed credential-based login for admin
+// =====================================================
+router.post('/login', async (req, res) => {
+  try {
+    const { email, password } = req.body;
+    
+    // Fixed credentials from env
+    const expectedEmail = process.env.ADMIN_EMAIL || 'gigcare@admin.com';
+    const expectedPassword = process.env.ADMIN_PASSWORD || 'Admin123@';
+
+    if (email === expectedEmail && password === expectedPassword) {
+      // Create a dummy profile object for the token
+      const profile = { id: 'admin-fixed-id', email, role: 'admin', full_name: 'System Admin' };
+      
+      const token = jwt.sign(
+        { user_id: profile.id, email: profile.email, role: profile.role },
+        process.env.JWT_SECRET || 'fallback-super-secret-key',
+        { expiresIn: '12h' }
+      );
+      
+      return res.json({ data: { token, profile } });
+    }
+
+    return res.status(401).json({ error: 'Invalid admin credentials', code: 'UNAUTHORIZED' });
+  } catch (err) {
+    console.error('Admin login error:', err);
+    res.status(500).json({ error: 'Login failed', code: 'LOGIN_ERROR' });
+  }
+});
 
 // =====================================================
 // POST /api/admin/trigger-event
 // Admin fires a trigger event manually (for demo)
 // =====================================================
-router.post('/trigger-event', authMiddleware('ADMIN'), async (req, res) => {
+router.post('/trigger-event', authMiddleware('admin'), async (req, res) => {
   try {
-    const { zone_id, trigger_type, trigger_value } = req.body;
+    const { zone_id, city_id, trigger_type, trigger_value, reason } = req.body;
+    const isCityWideTrigger = !zone_id && !!city_id;
 
-    if (!zone_id || !trigger_type || trigger_value === undefined) {
+    const allowedTriggerTypes = ['HEAVY_RAIN', 'EXTREME_HEAT', 'POOR_AQI', 'CURFEW', 'APP_OUTAGE', 'OTHER_REASON'];
+
+    if (!trigger_type || trigger_value === undefined || (!zone_id && !city_id)) {
       return res.status(422).json({
-        error: 'Missing required fields: zone_id, trigger_type, trigger_value',
+        error: 'Missing required fields: zone_id/city_id, trigger_type, trigger_value',
         code: 'MISSING_FIELDS',
       });
     }
 
-    // Create event
-    const event_id = `ev-${uuidv4().substring(0, 8)}`;
-    const severity = trigger_type === 'HEAVY_RAIN' ? 1.3 : trigger_type === 'POOR_AQI' && trigger_value >= 400 ? 1.5 : 1.0;
-    const multiplier = new Date().getHours() >= 18 && new Date().getHours() <= 21 ? 1.2 : 1.0;
+    if (!allowedTriggerTypes.includes(trigger_type)) {
+      return res.status(422).json({
+        error: `Unsupported trigger_type. Allowed: ${allowedTriggerTypes.join(', ')}`,
+        code: 'INVALID_TRIGGER_TYPE',
+      });
+    }
 
-    await db.createTriggerEvent(event_id, zone_id, trigger_type, trigger_value, severity, multiplier, 45);
+    // Keep frontend-friendly "OTHER_REASON" while persisting enum-safe APP_OUTAGE.
+    const normalizedTriggerType = trigger_type === 'OTHER_REASON' ? 'APP_OUTAGE' : trigger_type;
+
+    let targetZoneId = zone_id;
+    let targetCityId = city_id || null;
+    const targetCityName = CITY_CONFIGS.find((city) => city.city_id === targetCityId)?.city_name || targetCityId;
+
+    if (!targetZoneId && targetCityId) {
+      const { data: cityZone, error: cityZoneError } = await supabase
+        .from('zones')
+        .select('zone_id, city')
+        .eq('city', targetCityName)
+        .order('zone_risk_score', { ascending: false, nullsFirst: false })
+        .limit(1)
+        .maybeSingle();
+
+      if (cityZoneError) {
+        throw cityZoneError;
+      }
+
+      targetZoneId = cityZone?.zone_id || `${targetCityId}_CENTROID`;
+    }
+
+    // Create event via Supabase
+    const severity =
+      normalizedTriggerType === 'HEAVY_RAIN'
+        ? 1.3
+        : normalizedTriggerType === 'POOR_AQI' && trigger_value >= 400
+          ? 1.5
+          : normalizedTriggerType === 'CURFEW'
+            ? 1.4
+            : normalizedTriggerType === 'APP_OUTAGE'
+              ? 1.2
+              : 1.0;
+    
+    const { data: event, error: eventError } = await db.createTriggerEvent(
+      targetZoneId, 
+      normalizedTriggerType,
+      trigger_value, 
+      severity
+    );
+
+    if (eventError) throw eventError;
 
     // Call auto-create endpoint internally
     try {
-      const claimsRes = await axios.post(`${API_URL}/api/claims/auto-create`, {
-        zone_id,
-        trigger_type,
+      const claimsRes = await axios.post(`${API_URL}/api/fraud/auto-create`, {
+        zone_id: isCityWideTrigger ? null : targetZoneId,
+        city_id: targetCityId,
+        trigger_type: normalizedTriggerType,
         trigger_value,
         disruption_hours: 3,
         severity_factor: severity,
-        peak_multiplier: multiplier,
-        event_id,
+        event_id: event.event_id,
+        reason: reason || null,
       }, {
         headers: { 'x-internal-service-key': INTERNAL_SERVICE_KEY },
       });
 
       res.status(201).json({
         data: {
-          event_id,
-          zone_id,
-          trigger_type,
-          trigger_value,
+          ...event,
+          city_id: targetCityId,
+          zone_id: targetZoneId,
+          trigger_scope: isCityWideTrigger ? 'CITY' : 'ZONE',
           claims_created: claimsRes.data.data?.length || 0,
-          claims: claimsRes.data.data || [],
         },
         meta: { timestamp: new Date().toISOString() },
       });
@@ -70,80 +280,83 @@ router.post('/trigger-event', authMiddleware('ADMIN'), async (req, res) => {
 });
 
 // =====================================================
-// GET /api/admin/claims
-// Get all claims with filters
-// =====================================================
-router.get('/claims', authMiddleware('ADMIN'), async (req, res) => {
-  try {
-    const { status, zone_id, limit = 100 } = req.query;
-
-    let query = 'SELECT c.*, w.name, w.phone, z.name as zone_name FROM claims c JOIN workers w ON c.worker_id = w.worker_id JOIN policies p ON c.policy_id = p.policy_id JOIN zones z ON p.worker_id IS NOT NULL WHERE 1=1';
-    const params = [];
-
-    if (status) {
-      query += ' AND c.status = $' + (params.length + 1);
-      params.push(status);
-    }
-    if (zone_id) {
-      query += ' AND z.zone_id = $' + (params.length + 1);
-      params.push(zone_id);
-    }
-
-    query += ' ORDER BY c.created_at DESC LIMIT $' + (params.length + 1);
-    params.push(parseInt(limit));
-
-    const result = await db.query(query, params);
-    res.json({
-      data: result.rows,
-      meta: { timestamp: new Date().toISOString(), count: result.rows.length },
-    });
-  } catch (err) {
-    console.error('Admin claims fetch error:', err);
-    res.status(500).json({ error: 'Failed to fetch claims', code: 'CLAIMS_FETCH_FAILED' });
-  }
-});
-
-// =====================================================
 // GET /api/admin/dashboard
-// Get dashboard metrics
+// Get dashboard metrics using Supabase RPC or simple aggregates
 // =====================================================
-router.get('/dashboard', authMiddleware('ADMIN'), async (req, res) => {
+router.get('/dashboard', authMiddleware('admin'), async (req, res) => {
   try {
-    // Total premiums
-    const premiumsRes = await db.query('SELECT COALESCE(SUM(premium_paid), 0) as total FROM policies WHERE status = $1', ['ACTIVE']);
-    const totalPremiums = premiumsRes.rows[0].total || 0;
+    // 1. Total Premiums
+    const { data: premiumsData } = await supabase
+      .from('policies')
+      .select('premium_paid')
+      .eq('status', 'ACTIVE');
+    const totalPremiums = (premiumsData || []).reduce((sum, p) => sum + p.premium_paid, 0);
 
-    // Total payouts
-    const payoutsRes = await db.query('SELECT COALESCE(SUM(final_payout), 0) as total FROM claims WHERE status = $1', ['PAID']);
-    const totalPayouts = payoutsRes.rows[0].total || 0;
+    // 2. Claims data (DB + fallback compatibility)
+    const { data: dbClaims } = await supabase
+      .from('claims')
+      .select('claim_id, policy_id, trigger_event_id, status, final_payout, created_at');
 
-    // Loss ratio
-    const lossRatio = totalPremiums > 0 ? Math.round((totalPayouts / totalPremiums) * 100) : 0;
+    const fallbackClaims = claimStore.listFallbackClaims();
+    const combinedClaims = dedupeClaims(dbClaims || [], fallbackClaims);
 
-    // Claims by status
-    const statusRes = await db.query('SELECT status, COUNT(*) as count FROM claims GROUP BY status');
-    const claimsByStatus = {};
-    statusRes.rows.forEach(row => {
-      claimsByStatus[row.status] = row.count;
-    });
+    // Treat all non-denied/non-closed claims as current liability so manual triggers
+    // immediately affect payout/loss/reserve metrics.
+    const liabilityStatuses = new Set([
+      'AUTO_CREATED',
+      'TRUST_EVALUATED',
+      'APPROVED',
+      'PARTIAL',
+      'FLAGGED',
+      'PAID',
+    ]);
 
-    // Recent claims
-    const recentRes = await db.query('SELECT * FROM claims ORDER BY created_at DESC LIMIT 10');
+    const totalClaimLiability = combinedClaims
+      .filter((claim) => liabilityStatuses.has(claim.status))
+      .reduce((sum, claim) => sum + Number(claim.final_payout || 0), 0);
 
-    // Total today
-    const todayRes = await db.query("SELECT COUNT(*) as count FROM claims WHERE DATE(created_at) = CURRENT_DATE");
-    const claimsToday = todayRes.rows[0].count || 0;
+    const totalPayouts = Math.min(totalClaimLiability, totalPremiums);
+    const reservePool = Math.max(0, totalPremiums - totalPayouts);
+    const lossRatioPercent = totalPremiums > 0 ? Math.round((totalPayouts / totalPremiums) * 100) : 0;
+
+    // 3. Claims by Status
+    const claimsByStatus = combinedClaims.reduce((acc, claim) => {
+      const status = claim.status || 'UNKNOWN';
+      acc[status] = (acc[status] || 0) + 1;
+      return acc;
+    }, {});
+
+    // 4. Recent Claims
+    const { data: recentClaims } = await supabase
+      .from('claims')
+      .select('*, profiles(full_name)')
+      .order('created_at', { ascending: false })
+      .limit(10);
+
+    const mergedRecentClaims = dedupeClaims(
+      (recentClaims || []).map((claim) => ({ ...claim, synthetic_fallback: false })),
+      fallbackClaims.map((claim) => ({ ...claim, profiles: claim.profiles || null, synthetic_fallback: true }))
+    )
+      .sort((a, b) => new Date(b.created_at || 0) - new Date(a.created_at || 0))
+      .slice(0, 10);
+
+    // 5. Claims Today (last 24h)
+    const twentyFourHoursAgo = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+    const claimsTodayCount = combinedClaims.filter(
+      (claim) => new Date(claim.created_at || 0) >= new Date(twentyFourHoursAgo)
+    ).length;
 
     res.json({
       data: {
-        loss_ratio_percent: lossRatio,
         total_premiums_collected: totalPremiums,
         total_payouts: totalPayouts,
-        claims_today: claimsToday,
+        reserve_pool: reservePool,
+        total_claim_liability: totalClaimLiability,
+        unreserved_claim_liability: Math.max(0, totalClaimLiability - totalPremiums),
+        loss_ratio_percent: lossRatioPercent,
+        claims_today: claimsTodayCount,
         claims_by_status: claimsByStatus,
-        pending_review_count: claimsByStatus['FLAGGED'] || 0,
-        fraud_rings_active: 0, // Phase 3
-        recent_claims: recentRes.rows,
+        recent_claims: mergedRecentClaims,
       },
       meta: { timestamp: new Date().toISOString() },
     });
@@ -154,18 +367,370 @@ router.get('/dashboard', authMiddleware('ADMIN'), async (req, res) => {
 });
 
 // =====================================================
-// GET /api/admin/fraud-rings
-// Get active fraud rings (Phase 3)
+// POST /api/admin/seed-demo-worker
+// Seed one active worker + policy for end-to-end demos
 // =====================================================
-router.get('/fraud-rings', authMiddleware('ADMIN'), async (req, res) => {
-  res.json({
-    data: {
-      active_rings: [],
-      temporal_spikes: [],
-      note: 'Fraud ring detection coming in Phase 3',
-    },
-    meta: { timestamp: new Date().toISOString() },
-  });
+router.post('/seed-demo-worker', authMiddleware('admin'), async (req, res) => {
+  let stage = 'init';
+  try {
+    const zoneId = req.body?.zone_id || 'zone_02';
+    const now = Date.now();
+    const email = req.body?.email || `demo.worker.${now}@gigcare.app`;
+    const phone = req.body?.phone || `+9199${String(now).slice(-8)}`;
+
+    const profileId = uuidv4();
+    stage = 'create_profile';
+    const created = await db.createProfile({
+      id: profileId,
+      full_name: req.body?.name || 'Demo Worker',
+      email,
+      phone,
+      role: 'worker',
+      platform: req.body?.platform || 'ZOMATO',
+      zone_id: zoneId,
+    });
+
+    if (created.error) {
+      throw created.error;
+    }
+
+    const profile = created.data;
+
+    const weekStart = new Date();
+    weekStart.setHours(0, 0, 0, 0);
+    const weekEnd = new Date(weekStart);
+    weekEnd.setDate(weekEnd.getDate() + 6);
+
+    stage = 'create_quote';
+    const { data: quote, error: quoteError } = await supabase
+      .from('premium_quotes')
+      .insert({
+        quote_id: uuidv4(),
+        user_id: profileId,
+        zone_id: zoneId,
+        week_start: weekStart.toISOString().split('T')[0],
+        week_end: weekEnd.toISOString().split('T')[0],
+        premium_rupees: Number(req.body?.premium_rupees || 145),
+        expires_at: new Date(now + 24 * 60 * 60 * 1000).toISOString(),
+      })
+      .select()
+      .single();
+
+    if (quoteError) {
+      throw quoteError;
+    }
+
+    stage = 'create_policy';
+    const { data: policy, error: policyError } = await db.createPolicy(
+      profileId,
+      req.body?.coverage_tier || 'STANDARD',
+      quote.premium_rupees,
+      Number(req.body?.max_payout || 1200),
+      quote.week_start,
+      quote.week_end
+    );
+
+    if (policyError) {
+      throw policyError;
+    }
+
+    const createdPolicyId = policy.policy_id || policy.id;
+    if (!createdPolicyId) {
+      throw new Error('Unable to determine policy id for activation');
+    }
+
+    stage = 'activate_policy';
+    const { data: activePolicy, error: activePolicyError } = await db.activatePolicy(
+      createdPolicyId,
+      `demo_payment_${Date.now()}`
+    );
+
+    if (activePolicyError) {
+      throw activePolicyError;
+    }
+
+    res.status(201).json({
+      data: {
+        profile,
+        quote,
+        policy: {
+          ...activePolicy,
+          policy_id: activePolicy.policy_id || activePolicy.id,
+        },
+      },
+      meta: { timestamp: new Date().toISOString() },
+    });
+  } catch (err) {
+    console.error(`Seed demo worker error at ${stage}:`, err);
+    res.status(500).json({ error: 'Failed to seed demo worker', code: 'SEED_DEMO_FAILED', stage });
+  }
+});
+
+// =====================================================
+// GET /api/admin/fraud-rings
+// Fraud ring feed proxied from the fraud service
+// =====================================================
+router.get('/fraud-rings', authMiddleware('admin'), async (req, res) => {
+  try {
+    const response = await axios.get(`${FRAUD_SERVICE_URL}/rings`, { timeout: 5000 });
+    res.json({
+      data: response.data.data || [],
+      meta: { timestamp: new Date().toISOString() },
+    });
+  } catch (err) {
+    console.error('Fraud rings fetch error:', err.message);
+    res.json({
+      data: [],
+      meta: { timestamp: new Date().toISOString() },
+    });
+  }
+});
+
+// =====================================================
+// GET /api/admin/eligibility-stats
+// SS Code eligibility overview
+// =====================================================
+router.get('/eligibility-stats', authMiddleware('admin'), async (req, res) => {
+  try {
+    let stats = { eligible: 0, near_threshold: 0, ineligible: 0, total: 0 };
+
+    try {
+      const { data: workers, error } = await supabase
+        .from('workers')
+        .select('worker_id, engagement_days_this_fy, multi_platform, ss_code_eligible');
+
+      if (error) {
+        throw error;
+      }
+
+      stats = (workers || []).reduce(
+        (acc, worker) => {
+          const threshold = worker.multi_platform ? 120 : 90;
+          const days = worker.engagement_days_this_fy || 0;
+
+          if (worker.ss_code_eligible || days >= threshold) {
+            acc.eligible += 1;
+          } else if (threshold - days <= 15) {
+            acc.near_threshold += 1;
+          } else {
+            acc.ineligible += 1;
+          }
+
+          return acc;
+        },
+        { eligible: 0, near_threshold: 0, ineligible: 0, total: (workers || []).length }
+      );
+    } catch (schemaError) {
+      console.warn('Eligibility stats fallback:', schemaError.message);
+
+      const { data: profiles, error: profileError } = await supabase
+        .from('profiles')
+        .select('id, created_at')
+        .eq('role', 'worker');
+
+      if (profileError) {
+        throw profileError;
+      }
+
+      const now = Date.now();
+      stats = (profiles || []).reduce(
+        (acc, profile) => {
+          const createdAt = profile.created_at ? new Date(profile.created_at).getTime() : now;
+          const days = Math.max(0, Math.floor((now - createdAt) / (1000 * 60 * 60 * 24)));
+          const threshold = 90;
+
+          if (days >= threshold) {
+            acc.eligible += 1;
+          } else if (threshold - days <= 15) {
+            acc.near_threshold += 1;
+          } else {
+            acc.ineligible += 1;
+          }
+
+          return acc;
+        },
+        { eligible: 0, near_threshold: 0, ineligible: 0, total: (profiles || []).length }
+      );
+    }
+
+    res.json({
+      data: stats,
+      meta: { timestamp: new Date().toISOString() },
+    });
+  } catch (err) {
+    console.error('Eligibility stats error:', err);
+    res.status(500).json({ error: 'Failed to fetch eligibility stats', code: 'ELIGIBILITY_STATS_FAILED' });
+  }
+});
+
+// =====================================================
+// GET /api/admin/cities/metrics
+// All-city comparison data for the India map dashboard
+// =====================================================
+router.get('/cities/metrics', authMiddleware('admin'), async (req, res) => {
+  try {
+    const [zonesResult, claimsResult] = await Promise.allSettled([
+      supabase.from('zones').select('zone_id, zone_risk_score, zone_risk_level, city, name, lat, lon'),
+      supabase.from('claims').select('zone_id, status, final_payout, created_at'),
+    ]);
+
+    const zones = zonesResult.status === 'fulfilled' && !zonesResult.value.error ? (zonesResult.value.data || []) : [];
+    const claims = zonesResult.status === 'fulfilled' ? dedupeClaims(
+      claimsResult.status === 'fulfilled' && !claimsResult.value.error ? (claimsResult.value.data || []) : [],
+      claimStore.listFallbackClaims().map((claim) => ({
+        ...claim,
+        zone_id: claim.zone_id || null,
+      }))
+    ) : [];
+
+    const zoneGroups = zones.reduce((acc, zone) => {
+      const cityName = zone.city || 'Unknown';
+      acc[cityName] = acc[cityName] || [];
+      acc[cityName].push(zone);
+      return acc;
+    }, {});
+
+    const claimGroups = claims.reduce((acc, claim) => {
+      const matchingZone = zones.find((zone) => zone.zone_id === claim.zone_id);
+      const cityName = matchingZone?.city || 'Unknown';
+      acc[cityName] = acc[cityName] || [];
+      acc[cityName].push(claim);
+      return acc;
+    }, {});
+
+    // Fetch Profiles to map workers to cities
+    const { data: profiles } = await supabase.from('profiles').select('id, zone_id');
+    const { data: activePolicies } = await supabase.from('policies').select('user_id, premium_paid').eq('status', 'ACTIVE');
+
+    const profileMap = (profiles || []).reduce((acc, p) => {
+      acc[p.id] = p.zone_id;
+      return acc;
+    }, {});
+
+    const cityMetrics = CITY_CONFIGS.map((city) => {
+      const cityZones = zoneGroups[city.city_name] || [];
+      const cityZoneIds = cityZones.map(z => z.zone_id);
+      
+      const cityClaims = (claims || []).filter(c => cityZoneIds.includes(c.zone_id));
+      const recentClaims = cityClaims.filter((claim) => new Date(claim.created_at) >= new Date(Date.now() - 7 * 24 * 60 * 60 * 1000));
+      
+      const cityWorkerCount = (profiles || []).filter(p => cityZoneIds.includes(p.zone_id)).length;
+      
+      // Real policies aggregation
+      const cityActivePolicies = (activePolicies || []).filter(p => cityZoneIds.includes(profileMap[p.user_id]));
+      const totalPremiums = cityActivePolicies.reduce((sum, p) => sum + (p.premium_paid || 0), 0);
+      const premiumValues = cityActivePolicies
+        .map((p) => Number(p.premium_paid || 0))
+        .filter((value) => Number.isFinite(value) && value > 0);
+      const minPremium = premiumValues.length ? Math.min(...premiumValues) : null;
+      const maxPremium = premiumValues.length ? Math.max(...premiumValues) : null;
+      const totalClaimLiability = cityClaims.reduce((sum, claim) => sum + Number(claim.final_payout || 0), 0);
+      const totalPayouts = Math.min(totalClaimLiability, totalPremiums);
+      const reservePool = Math.max(0, totalPremiums - totalPayouts);
+      const lossRatio = totalPremiums > 0 ? Number((totalPayouts / totalPremiums).toFixed(2)) : 0;
+
+      const avgRisk = cityZones.length
+        ? cityZones.reduce((sum, zone) => sum + Number(zone.zone_risk_score || 1), 0) / cityZones.length
+        : 1;
+
+      return {
+        city_id: city.city_id,
+        city_name: city.city_name,
+        state: city.state,
+        climate_zone: city.climate_zone,
+        active_workers_estimate: cityWorkerCount,
+        active_policies: cityActivePolicies.length,
+        zones_count: cityZones.length,
+        average_risk: Number(avgRisk.toFixed(2)),
+        this_week_claims: recentClaims.length,
+        total_claims: cityClaims.length,
+        total_payouts: totalPayouts,
+        total_premiums: totalPremiums,
+        total_claim_liability: totalClaimLiability,
+        unreserved_claim_liability: Math.max(0, totalClaimLiability - totalPremiums),
+        reserve_pool: reservePool,
+        loss_ratio: lossRatio,
+        premium_range: minPremium !== null ? `Rs.${Math.round(minPremium)}-${Math.round(maxPremium || minPremium)}` : 'No active policies',
+      };
+    });
+
+    res.json({
+      data: cityMetrics,
+      meta: { timestamp: new Date().toISOString() },
+    });
+  } catch (err) {
+    console.error('City metrics error:', err);
+    res.status(500).json({ error: 'Failed to fetch city metrics', code: 'CITY_METRICS_FAILED' });
+  }
+});
+
+// =====================================================
+// GET /api/admin/forecast
+// Lightweight next-week claims forecast
+// =====================================================
+router.get('/forecast', authMiddleware('admin'), async (req, res) => {
+  try {
+    const { data: claims, error } = await supabase
+      .from('claims')
+      .select('final_payout, created_at, city_id');
+
+    if (error && error.code === 'PGRST205') {
+      return res.json({
+        data: {
+          expected_claims_next_week: 0,
+          forecast_delta: 0,
+          basis: 'insufficient historical claims data',
+        },
+        meta: { timestamp: new Date().toISOString() },
+      });
+    }
+
+    if (error) {
+      throw error;
+    }
+
+    const last7Days = (claims || []).filter((claim) => new Date(claim.created_at) >= new Date(Date.now() - 7 * 24 * 60 * 60 * 1000));
+    const weeklyPayouts = last7Days.reduce((sum, claim) => sum + Number(claim.final_payout || 0), 0);
+    const expectedClaimsNextWeek = Math.round(weeklyPayouts * 1.15);
+
+    res.json({
+      data: {
+        expected_claims_next_week: expectedClaimsNextWeek,
+        forecast_delta: Math.round(expectedClaimsNextWeek * 0.12),
+        basis: '7-day payout trend',
+      },
+      meta: { timestamp: new Date().toISOString() },
+    });
+  } catch (err) {
+    console.error('Forecast error:', err);
+    res.status(500).json({ error: 'Failed to fetch forecast', code: 'FORECAST_FAILED' });
+  }
+});
+
+// =====================================================
+// GET /api/admin/weather-aqi-week?city_id=BLR
+// 7-day city weather + AQI outlook for admin dashboard
+// =====================================================
+router.get('/weather-aqi-week', authMiddleware('admin'), async (req, res) => {
+  try {
+    const cityId = String(req.query.city_id || 'BLR').toUpperCase();
+    const cityConfig = CITY_CONFIGS.find((city) => city.city_id === cityId) || CITY_CONFIGS[0];
+    const weekly = await fetchCityWeatherAqiWeek(cityConfig);
+
+    res.json({
+      data: {
+        city_id: cityConfig.city_id,
+        city_name: cityConfig.city_name,
+        state: cityConfig.state,
+        days: weekly,
+        source: 'open-meteo-weather-and-air-quality',
+      },
+      meta: { timestamp: new Date().toISOString() },
+    });
+  } catch (err) {
+    console.error('Weather AQI week error:', err.message);
+    res.status(500).json({ error: 'Failed to fetch weather AQI week', code: 'WEATHER_AQI_WEEK_FAILED' });
+  }
 });
 
 module.exports = router;

@@ -2,6 +2,8 @@
 // Webhook endpoints for Razorpay - Person A
 
 const express = require('express');
+const crypto = require('crypto');
+const supabase = require('../models/supabase');
 const db = require('../models/db');
 
 const router = express.Router();
@@ -22,13 +24,11 @@ router.post('/razorpay-payment', async (req, res) => {
     }
 
     // Activate policy
-    const result = await db.activatePolicy(policy_id, payment_id);
-    
-    if (result.rows.length === 0) {
+    const { data: policy, error: activateError } = await db.activatePolicy(policy_id, payment_id);
+
+    if (activateError || !policy) {
       return res.status(404).json({ error: 'Policy not found', code: 'POLICY_NOT_FOUND' });
     }
-
-    const policy = result.rows[0];
 
     res.json({
       data: {
@@ -52,10 +52,18 @@ router.post('/razorpay-payment', async (req, res) => {
 router.post('/razorpay', async (req, res) => {
   try {
     const event = req.body;
-    console.log('Razorpay webhook:', event.event);
+    const signature = req.headers['x-razorpay-signature'];
+    const webhookSecret = process.env.RAZORPAY_WEBHOOK_SECRET;
 
-    // For demo: accept all webhooks
-    // In production: verify X-Razorpay-Signature header
+    if (signature && webhookSecret) {
+      const body = typeof req.body === 'string' ? req.body : JSON.stringify(req.body);
+      const expected = crypto.createHmac('sha256', webhookSecret).update(body).digest('hex');
+      if (signature !== expected) {
+        return res.status(400).json({ error: 'Invalid signature' });
+      }
+    }
+
+    console.log('Razorpay webhook:', event.event);
 
     if (event.event === 'payment.authorized' || event.event === 'payment.captured') {
       const payment = event.payload.payment.entity;
@@ -69,11 +77,32 @@ router.post('/razorpay', async (req, res) => {
 
     if (event.event === 'payout.processed') {
       const payout = event.payload.payout.entity;
-      // Update claim if payout metadata has claim_id
-      const notes = payout.notes || {};
-      if (notes.claim_id) {
-        await db.updateClaimStatus(notes.claim_id, 'PAID', payout.id);
-        console.log(`Claim ${notes.claim_id} marked as PAID via payout`);
+      const claimId = payout.reference_id || payout.notes?.claim_id;
+      if (claimId) {
+        await supabase
+          .from('claims')
+          .update({
+            status: 'PAID',
+            razorpay_payout_id: payout.id,
+            paid_at: new Date().toISOString(),
+          })
+          .eq('claim_id', claimId);
+        console.log(`Claim ${claimId} marked as PAID via payout`);
+      }
+    }
+
+    if (event.event === 'payout.failed') {
+      const payout = event.payload.payout.entity;
+      const claimId = payout.reference_id || payout.notes?.claim_id;
+      if (claimId) {
+        await supabase
+          .from('claims')
+          .update({
+            status: 'FLAGGED',
+            fraud_reason: payout.failure_reason || 'Payout failed',
+          })
+          .eq('claim_id', claimId);
+        console.log(`Claim ${claimId} flagged via failed payout`);
       }
     }
 

@@ -50,6 +50,13 @@ export default function Splash() {
           Get Started
         </button>
 
+        <button
+          onClick={() => navigate('/login')}
+          className="w-full bg-transparent border-2 border-white text-white font-bold py-4 rounded-lg hover:bg-white hover:text-teal-900 transition-all mb-4"
+        >
+          Sign In
+        </button>
+
         {/* Demo Info */}
         <p className="text-sm text-teal-200">
           Demo OTP: <span className="font-mono font-bold">123456</span>
