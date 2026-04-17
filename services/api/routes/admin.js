@@ -28,6 +28,121 @@ function dedupeClaims(primary = [], secondary = []) {
   return Array.from(map.values());
 }
 
+function getAqiCategory(aqi) {
+  if (!Number.isFinite(aqi)) return 'UNKNOWN';
+  if (aqi <= 50) return 'GOOD';
+  if (aqi <= 100) return 'MODERATE';
+  if (aqi <= 150) return 'UNHEALTHY_FOR_SENSITIVE';
+  if (aqi <= 200) return 'UNHEALTHY';
+  if (aqi <= 300) return 'VERY_UNHEALTHY';
+  return 'HAZARDOUS';
+}
+
+async function fetchCityWeatherAqiWeek(cityConfig) {
+  const lat = cityConfig.centroid_lat;
+  const lon = cityConfig.centroid_lon;
+
+  const [weatherRes, airRes] = await Promise.all([
+    axios.get('https://api.open-meteo.com/v1/forecast', {
+      params: {
+        latitude: lat,
+        longitude: lon,
+        timezone: 'Asia/Kolkata',
+        forecast_days: 7,
+        daily: [
+          'weather_code',
+          'temperature_2m_max',
+          'temperature_2m_min',
+          'apparent_temperature_max',
+          'apparent_temperature_min',
+          'precipitation_sum',
+          'precipitation_probability_max',
+          'wind_speed_10m_max',
+          'uv_index_max',
+        ].join(','),
+      },
+      timeout: 7000,
+    }),
+    axios.get('https://air-quality-api.open-meteo.com/v1/air-quality', {
+      params: {
+        latitude: lat,
+        longitude: lon,
+        timezone: 'Asia/Kolkata',
+        forecast_days: 7,
+        hourly: ['us_aqi', 'pm2_5', 'pm10', 'ozone'].join(','),
+      },
+      timeout: 7000,
+    }),
+  ]);
+
+  const weatherDaily = weatherRes.data?.daily || {};
+  const airHourly = airRes.data?.hourly || {};
+
+  const hourlyTimes = airHourly.time || [];
+  const hourlyAqi = airHourly.us_aqi || [];
+  const hourlyPm25 = airHourly.pm2_5 || [];
+  const hourlyPm10 = airHourly.pm10 || [];
+  const hourlyOzone = airHourly.ozone || [];
+
+  const dailyAqiMap = {};
+  for (let index = 0; index < hourlyTimes.length; index += 1) {
+    const timestamp = hourlyTimes[index];
+    const day = typeof timestamp === 'string' ? timestamp.slice(0, 10) : null;
+    if (!day) continue;
+
+    dailyAqiMap[day] = dailyAqiMap[day] || {
+      aqi: [],
+      pm25: [],
+      pm10: [],
+      ozone: [],
+    };
+
+    const aqiValue = Number(hourlyAqi[index]);
+    const pm25Value = Number(hourlyPm25[index]);
+    const pm10Value = Number(hourlyPm10[index]);
+    const ozoneValue = Number(hourlyOzone[index]);
+
+    if (Number.isFinite(aqiValue)) dailyAqiMap[day].aqi.push(aqiValue);
+    if (Number.isFinite(pm25Value)) dailyAqiMap[day].pm25.push(pm25Value);
+    if (Number.isFinite(pm10Value)) dailyAqiMap[day].pm10.push(pm10Value);
+    if (Number.isFinite(ozoneValue)) dailyAqiMap[day].ozone.push(ozoneValue);
+  }
+
+  const days = weatherDaily.time || [];
+  return days.map((day, index) => {
+    const aqiBucket = dailyAqiMap[day] || { aqi: [], pm25: [], pm10: [], ozone: [] };
+    const maxAqi = aqiBucket.aqi.length ? Math.max(...aqiBucket.aqi) : null;
+    const avgAqi = aqiBucket.aqi.length
+      ? Number((aqiBucket.aqi.reduce((sum, value) => sum + value, 0) / aqiBucket.aqi.length).toFixed(1))
+      : null;
+
+    const average = (values) => (
+      values.length
+        ? Number((values.reduce((sum, value) => sum + value, 0) / values.length).toFixed(1))
+        : null
+    );
+
+    return {
+      date: day,
+      weather_code: weatherDaily.weather_code?.[index] ?? null,
+      temp_max_c: weatherDaily.temperature_2m_max?.[index] ?? null,
+      temp_min_c: weatherDaily.temperature_2m_min?.[index] ?? null,
+      feels_like_max_c: weatherDaily.apparent_temperature_max?.[index] ?? null,
+      feels_like_min_c: weatherDaily.apparent_temperature_min?.[index] ?? null,
+      rain_mm: weatherDaily.precipitation_sum?.[index] ?? null,
+      rain_probability_pct: weatherDaily.precipitation_probability_max?.[index] ?? null,
+      wind_speed_kmh: weatherDaily.wind_speed_10m_max?.[index] ?? null,
+      uv_index: weatherDaily.uv_index_max?.[index] ?? null,
+      aqi_avg: avgAqi,
+      aqi_max: maxAqi,
+      aqi_category: getAqiCategory(maxAqi),
+      pm25_avg: average(aqiBucket.pm25),
+      pm10_avg: average(aqiBucket.pm10),
+      ozone_avg: average(aqiBucket.ozone),
+    };
+  });
+}
+
 // =====================================================
 // POST /api/admin/login
 // Fixed credential-based login for admin
@@ -589,6 +704,32 @@ router.get('/forecast', authMiddleware('admin'), async (req, res) => {
   } catch (err) {
     console.error('Forecast error:', err);
     res.status(500).json({ error: 'Failed to fetch forecast', code: 'FORECAST_FAILED' });
+  }
+});
+
+// =====================================================
+// GET /api/admin/weather-aqi-week?city_id=BLR
+// 7-day city weather + AQI outlook for admin dashboard
+// =====================================================
+router.get('/weather-aqi-week', authMiddleware('admin'), async (req, res) => {
+  try {
+    const cityId = String(req.query.city_id || 'BLR').toUpperCase();
+    const cityConfig = CITY_CONFIGS.find((city) => city.city_id === cityId) || CITY_CONFIGS[0];
+    const weekly = await fetchCityWeatherAqiWeek(cityConfig);
+
+    res.json({
+      data: {
+        city_id: cityConfig.city_id,
+        city_name: cityConfig.city_name,
+        state: cityConfig.state,
+        days: weekly,
+        source: 'open-meteo-weather-and-air-quality',
+      },
+      meta: { timestamp: new Date().toISOString() },
+    });
+  } catch (err) {
+    console.error('Weather AQI week error:', err.message);
+    res.status(500).json({ error: 'Failed to fetch weather AQI week', code: 'WEATHER_AQI_WEEK_FAILED' });
   }
 });
 

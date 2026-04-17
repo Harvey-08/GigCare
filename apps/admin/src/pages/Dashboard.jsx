@@ -37,6 +37,27 @@ function Donut({ claimsByStatus }) {
   );
 }
 
+function formatShortDate(dateValue) {
+  if (!dateValue) return '--';
+  const parsed = new Date(dateValue);
+  if (Number.isNaN(parsed.getTime())) return '--';
+  return new Intl.DateTimeFormat('en-IN', {
+    weekday: 'short',
+    day: '2-digit',
+    month: 'short',
+  }).format(parsed);
+}
+
+function getAqiTone(category) {
+  if (category === 'GOOD') return 'bg-emerald-100 text-emerald-700';
+  if (category === 'MODERATE') return 'bg-lime-100 text-lime-700';
+  if (category === 'UNHEALTHY_FOR_SENSITIVE') return 'bg-amber-100 text-amber-700';
+  if (category === 'UNHEALTHY') return 'bg-orange-100 text-orange-700';
+  if (category === 'VERY_UNHEALTHY') return 'bg-rose-100 text-rose-700';
+  if (category === 'HAZARDOUS') return 'bg-fuchsia-100 text-fuchsia-700';
+  return 'bg-slate-100 text-slate-700';
+}
+
 export default function Dashboard({ profile, onLogout }) {
   const navigate = useNavigate();
   const [dashboard, setDashboard] = useState(null);
@@ -44,6 +65,7 @@ export default function Dashboard({ profile, onLogout }) {
   const [fraudRings, setFraudRings] = useState([]);
   const [eligibilityStats, setEligibilityStats] = useState(null);
   const [forecast, setForecast] = useState(null);
+  const [weatherAqiWeek, setWeatherAqiWeek] = useState(null);
   const [heatmap, setHeatmap] = useState([]);
   const [selectedCityId, setSelectedCityId] = useState('BLR');
   const [loading, setLoading] = useState(true);
@@ -53,6 +75,10 @@ export default function Dashboard({ profile, onLogout }) {
     const interval = setInterval(fetchData, 30000);
     return () => clearInterval(interval);
   }, []);
+
+  useEffect(() => {
+    fetchWeatherAqiWeek(selectedCityId);
+  }, [selectedCityId]);
 
   const fetchData = async () => {
     try {
@@ -86,6 +112,18 @@ export default function Dashboard({ profile, onLogout }) {
       console.error('Dashboard data fetch error:', err.message);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const fetchWeatherAqiWeek = async (cityId) => {
+    try {
+      const response = await apiClient.get('/admin/weather-aqi-week', {
+        params: { city_id: cityId || 'BLR' },
+      });
+      setWeatherAqiWeek(response.data.data || null);
+    } catch (err) {
+      console.error('Weather AQI week fetch error:', err.message);
+      setWeatherAqiWeek(null);
     }
   };
 
@@ -277,6 +315,70 @@ export default function Dashboard({ profile, onLogout }) {
                 </div>
                 <p className="mt-4 text-xs font-medium text-slate-500">Selected city zones only. Click another city on the map to update.</p>
               </div>
+            </div>
+
+            <div className="rounded-[36px] border border-slate-200 bg-white p-6 shadow-sm">
+              <div className="mb-5 flex flex-wrap items-center justify-between gap-4">
+                <div>
+                  <p className="text-[10px] font-black uppercase tracking-[0.35em] text-slate-400">Weather + AQI outlook</p>
+                  <h3 className="text-2xl font-black tracking-tight text-slate-900">
+                    Next 7 days • {weatherAqiWeek?.city_name || selectedCity?.city_name || 'Selected city'}
+                  </h3>
+                </div>
+              </div>
+
+              {!weatherAqiWeek?.days?.length ? (
+                <div className="rounded-2xl bg-slate-50 px-4 py-6 text-sm font-medium text-slate-500">
+                  Weekly weather and AQI data unavailable.
+                </div>
+              ) : (
+                <div className="overflow-hidden rounded-[24px] border border-slate-200">
+                  <div className="max-h-[420px] overflow-auto">
+                    <table className="w-full text-left text-sm">
+                      <thead className="sticky top-0 bg-white">
+                        <tr className="text-[10px] font-black uppercase tracking-[0.25em] text-slate-400">
+                          <th className="px-4 py-3">Day</th>
+                          <th className="px-4 py-3">Temp</th>
+                          <th className="px-4 py-3">Feels Like</th>
+                          <th className="px-4 py-3">Rain</th>
+                          <th className="px-4 py-3">Rain %</th>
+                          <th className="px-4 py-3">Wind</th>
+                          <th className="px-4 py-3">UV</th>
+                          <th className="px-4 py-3">AQI</th>
+                          <th className="px-4 py-3">PM2.5</th>
+                          <th className="px-4 py-3">PM10</th>
+                          <th className="px-4 py-3">Ozone</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-100">
+                        {weatherAqiWeek.days.map((day) => (
+                          <tr key={day.date} className="hover:bg-slate-50">
+                            <td className="px-4 py-3 font-bold text-slate-900">{formatShortDate(day.date)}</td>
+                            <td className="px-4 py-3 text-slate-700">
+                              {day.temp_max_c ?? '--'}° / {day.temp_min_c ?? '--'}°
+                            </td>
+                            <td className="px-4 py-3 text-slate-700">
+                              {day.feels_like_max_c ?? '--'}° / {day.feels_like_min_c ?? '--'}°
+                            </td>
+                            <td className="px-4 py-3 text-slate-700">{day.rain_mm ?? '--'} mm</td>
+                            <td className="px-4 py-3 text-slate-700">{day.rain_probability_pct ?? '--'}%</td>
+                            <td className="px-4 py-3 text-slate-700">{day.wind_speed_kmh ?? '--'} km/h</td>
+                            <td className="px-4 py-3 text-slate-700">{day.uv_index ?? '--'}</td>
+                            <td className="px-4 py-3">
+                              <span className={`rounded-full px-2 py-1 text-[10px] font-black uppercase tracking-[0.15em] ${getAqiTone(day.aqi_category)}`}>
+                                {day.aqi_max ?? '--'} {day.aqi_category || ''}
+                              </span>
+                            </td>
+                            <td className="px-4 py-3 text-slate-700">{day.pm25_avg ?? '--'}</td>
+                            <td className="px-4 py-3 text-slate-700">{day.pm10_avg ?? '--'}</td>
+                            <td className="px-4 py-3 text-slate-700">{day.ozone_avg ?? '--'}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
             </div>
           </div>
         )}
