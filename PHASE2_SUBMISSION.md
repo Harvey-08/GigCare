@@ -1,5 +1,15 @@
 # GIGCARE PHASE 2 - SUBMISSION CHECKLIST & TECHNICAL SUMMARY
 
+## Documentation Note (Current Runtime)
+
+This document captures Phase 2 submission state. For current clone-and-run instructions and latest endpoint mappings, use [SETUP_AFTER_CLONE.md](SETUP_AFTER_CLONE.md).
+
+Current default local endpoints:
+- Worker app: http://localhost:3010
+- Admin app: http://localhost:3013
+- API base: http://localhost:3011/api
+- API health: http://localhost:3011/health
+
 **Submission Date:** April 1, 2026  
 **Status:** READY FOR SUBMISSION  
 **Demo Date:** April 4, 2026 (Before 2pm Deadline)

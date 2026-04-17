@@ -1,5 +1,12 @@
 # GigCare Phase 2 - Quick Testing Guide
 
+## Documentation Note (Current Runtime)
+
+This is a phase-era testing script. For current setup and endpoint source of truth, use [SETUP_AFTER_CLONE.md](SETUP_AFTER_CLONE.md).
+
+Current API base URL:
+- http://localhost:3011/api
+
 ## Prerequisites
 ```bash
 # Docker running

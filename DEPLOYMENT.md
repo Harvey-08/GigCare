@@ -1,5 +1,15 @@
 # Deployment & Testing Guide (Phase 2)
 
+## Documentation Note (Current Runtime)
+
+This is a phase-era deployment document. For current clone-and-run steps and canonical endpoints, use [SETUP_AFTER_CLONE.md](SETUP_AFTER_CLONE.md).
+
+Current default local endpoints:
+- Worker app: http://localhost:3010
+- Admin app: http://localhost:3013
+- API base: http://localhost:3011/api
+- API health: http://localhost:3011/health
+
 ## 🚀 Pre-Deployment Checklist
 
 - [ ] All files pushed to GitHub

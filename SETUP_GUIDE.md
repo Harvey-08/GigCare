@@ -34,6 +34,11 @@ Copy these files you already have:
 cp .env.example .env
 ```
 
+Optional quick setup (env bundle):
+- Pastebin link: https://pastebin.com/fjem0RgP
+- This contains env file content shared only for easier setup.
+- Recommended alternate method: use [.env.example](.env.example) and fill values manually.
+
 Then edit `.env` and fill in:
 ```
 JWT_SECRET=your_generated_secret_use_this: node -e "console.log(require('crypto').randomBytes(64).toString('hex'))"

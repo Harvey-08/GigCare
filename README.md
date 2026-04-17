@@ -1,5 +1,17 @@
 # GigCare
 
+## Documentation Note (Important)
+
+For current setup and runtime endpoints, use [SETUP_AFTER_CLONE.md](SETUP_AFTER_CLONE.md) as the source of truth.
+
+Current default local endpoints:
+- Worker app: http://localhost:3010
+- Admin app: http://localhost:3013
+- API base: http://localhost:3011/api
+- API health: http://localhost:3011/health
+
+Some historical sections below and in older phase documents may still mention legacy ports from earlier milestones.
+
 GigCare is a parametric insurance platform for gig delivery workers. It gives weekly coverage, automatically creates claims when weather or disruption conditions are met, and routes claims through a fraud check before payout. The system is built to show a complete insurance flow: purchase, activation, trigger detection, claim creation, review, and payout.
 
 ## What This Repo Contains
@@ -20,6 +32,7 @@ Useful companion docs:
 - [SETUP_GUIDE.md](SETUP_GUIDE.md) for the shorter setup walkthrough.
 - [DEMO_NAVIGATION.md](DEMO_NAVIGATION.md) for the judge/demo flow.
 - [HACKATHON_SUMMARY.md](HACKATHON_SUMMARY.md) for the submission summary.
+- [StackSurge_PitchDeck.pdf](StackSurge_PitchDeck.pdf) for the final presentation deck PDF.
 
 ### Quick Start
 
@@ -93,6 +106,10 @@ How it responds:
 ## Premium Model
 
 The premium service is trained on synthetic samples that mirror weather, zone risk, and payout behavior. That lets the model produce realistic weekly pricing during the demo while still using live weather inputs at runtime. The model is used to differentiate zones so that higher-risk areas receive higher premiums than lower-risk areas.
+
+### Hybrid Location Fallback
+
+If a detected worker location is outside the currently supported 10-city map bounds, GigCare falls back to the nearest supported city and still returns a premium quote. The fallback quote uses nearest-city baseline pricing plus risk and seasonal guard parameters, so onboarding does not fail for edge locations.
 
 ## Main APIs
 

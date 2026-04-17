@@ -4,6 +4,8 @@ This guide is for anyone who clones the repository and wants to run the full sta
 
 For the shorter overview, see [README.md](README.md). For the judge/demo walkthrough, see [DEMO_NAVIGATION.md](DEMO_NAVIGATION.md). For the submission summary, see [HACKATHON_SUMMARY.md](HACKATHON_SUMMARY.md).
 
+Pitch deck PDF path: [StackSurge_PitchDeck.pdf](StackSurge_PitchDeck.pdf)
+
 ## 1. Clone the Repository
 
 ```bash
@@ -24,6 +26,12 @@ Copy the template and fill in the required values:
 ```bash
 cp .env.example .env
 ```
+
+Optional quick setup (env bundle):
+
+- Pastebin link: https://pastebin.com/fjem0RgP
+- This contains env file content shared only for easier setup.
+- Recommended alternate method: use the local template at [.env.example](.env.example) and fill values manually using this guide's key table below.
 
 Minimum values to check:
 
@@ -168,6 +176,7 @@ docker compose logs --tail 40 trigger-engine
 ## 10. Notes For Hackathon Judges
 
 - Premiums are calculated before policy purchase.
+- Hybrid plan: if a detected location is outside the current 10 supported cities, the nearest supported city is selected and a fallback premium is computed using nearest-city pricing parameters.
 - Claims are created only when triggers occur.
 - Fraud checks run before payout.
 - The guaranteed demo payout button in the admin panel is the fastest way to show the full parametric flow.

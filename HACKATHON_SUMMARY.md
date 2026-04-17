@@ -4,6 +4,8 @@ GigCare is a parametric insurance platform for gig delivery workers. It gives we
 
 For the main project overview, see [README.md](README.md). For clone-and-run instructions, see [SETUP_AFTER_CLONE.md](SETUP_AFTER_CLONE.md).
 
+Final pitch deck PDF: [StackSurge_PitchDeck.pdf](StackSurge_PitchDeck.pdf)
+
 ## Setup After Clone
 
 For the full local setup, see [SETUP_AFTER_CLONE.md](SETUP_AFTER_CLONE.md). It lists the service URLs, required environment variables, startup steps, and the main API endpoints available after the stack is running.
@@ -72,6 +74,7 @@ The premium service was trained on synthetic samples that mirror weather, zone r
 - Weekly policy coverage instead of long insurance contracts.
 - Automatic claims from trigger events with no manual paperwork.
 - Live weather and AQI awareness.
+- Hybrid location-to-premium fallback: if the detected location is outside the 10 supported cities, the nearest supported city is used to compute a fallback quote.
 - Admin-triggered demo path that can target a real active policy zone.
 - Fraud hardening with reputation, identity linkage, and payout controls.
 - Clear worker and admin dashboards that make the system easy to show in a hackathon.

@@ -1,5 +1,9 @@
 # GigCare Phase 2 - Build Checkpoints
 
+## Documentation Note (Current Runtime)
+
+This checkpoint file is a phase progress log. For current runbook and endpoint references, use [SETUP_AFTER_CLONE.md](SETUP_AFTER_CLONE.md).
+
 **Team:** 3 members | **Deadline:** April 4, 2026 @ 2pm | **Target Rating:** 4-star minimum
 
 ---
