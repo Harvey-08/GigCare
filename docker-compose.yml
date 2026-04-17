@@ -30,7 +30,7 @@ services:
       INTERNAL_SERVICE_KEY: ${INTERNAL_SERVICE_KEY}
       PORT: 3001
       CORS_ORIGIN: http://localhost:3010
-      USE_MOCK_DATA: "true"
+      USE_MOCK_DATA: ${USE_MOCK_DATA:-false}
     # volumes:
     #   - ./services/api:/app
     #   - /app/node_modules
@@ -84,7 +84,9 @@ services:
       NODE_ENV: development
       API_URL: http://api:3001
       INTERNAL_SERVICE_KEY: ${INTERNAL_SERVICE_KEY}
-      USE_MOCK_DATA: "true"
+      OPENWEATHER_API_KEY: ${OPENWEATHER_API_KEY}
+      WAQI_TOKEN: ${WAQI_TOKEN}
+      USE_MOCK_DATA: ${USE_MOCK_DATA:-false}
     depends_on:
       - api
       - ml-fraud

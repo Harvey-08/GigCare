@@ -17,12 +17,66 @@ function formatDateIN(value) {
   const parsed = new Date(value);
   if (Number.isNaN(parsed.getTime())) return '--';
 
-  return new Intl.DateTimeFormat('en-GB', {
+  const parts = new Intl.DateTimeFormat('en-GB', {
     day: '2-digit',
     month: '2-digit',
-    year: 'numeric',
+    year: '2-digit',
+    timeZone: 'Asia/Kolkata',
+  }).formatToParts(parsed);
+
+  const day = parts.find((part) => part.type === 'day')?.value;
+  const month = parts.find((part) => part.type === 'month')?.value;
+  const year = parts.find((part) => part.type === 'year')?.value;
+
+  if (!day || !month || !year) return '--';
+  return `${day}/${month}/${year}`;
+}
+
+function formatWeekdayIN(value) {
+  if (!value) return '--';
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) return '--';
+
+  return new Intl.DateTimeFormat('en-IN', {
+    weekday: 'short',
     timeZone: 'Asia/Kolkata',
   }).format(parsed);
+}
+
+function parseISODateOnly(value) {
+  if (!value || typeof value !== 'string') return null;
+  const match = value.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (!match) return null;
+  const [, y, m, d] = match;
+  return {
+    year: Number(y),
+    month: Number(m),
+    day: Number(d),
+  };
+}
+
+function getDaysRemainingInclusive(weekEnd) {
+  const end = parseISODateOnly(weekEnd);
+  if (!end) return null;
+
+  const nowParts = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Asia/Kolkata',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).formatToParts(new Date());
+
+  const year = Number(nowParts.find((part) => part.type === 'year')?.value);
+  const month = Number(nowParts.find((part) => part.type === 'month')?.value);
+  const day = Number(nowParts.find((part) => part.type === 'day')?.value);
+
+  if (!year || !month || !day) return null;
+
+  const todayUtc = Date.UTC(year, month - 1, day);
+  const endUtc = Date.UTC(end.year, end.month - 1, end.day);
+  const diffDays = Math.floor((endUtc - todayUtc) / (1000 * 60 * 60 * 24));
+
+  return Math.max(0, diffDays + 1);
 }
 
 export default function Home({ profile, session, onLogout }) {
@@ -103,9 +157,8 @@ export default function Home({ profile, session, onLogout }) {
 
   const activePolicy = policies.find((policy) => policy.status === 'ACTIVE');
   const recentClaims = claims.slice(0, 5);
-  const daysRemaining = activePolicy
-    ? Math.max(0, Math.ceil((new Date(activePolicy.week_end) - new Date()) / (1000 * 60 * 60 * 24)))
-    : null;
+  const daysRemaining = activePolicy ? getDaysRemainingInclusive(activePolicy.week_end) : null;
+  const validTillDay = activePolicy ? formatWeekdayIN(activePolicy.week_end) : '--';
 
   const statusBadge = {
     APPROVED: 'bg-emerald-100 text-emerald-700',
@@ -154,7 +207,11 @@ export default function Home({ profile, session, onLogout }) {
               <div>
                 <p className="text-indigo-100 text-[10px] font-black uppercase tracking-[0.35em] mb-2">Active Coverage</p>
                 <p className="text-4xl font-black">₹{activePolicy.premium_paid}<span className="text-lg font-normal opacity-60">/wk</span></p>
-                <p className="mt-3 max-w-xl text-sm text-indigo-100/90">{daysRemaining !== null ? `${daysRemaining} days left on your current protection.` : 'Your current weekly protection is active.'}</p>
+                <p className="mt-3 max-w-xl text-sm text-indigo-100/90">
+                  {daysRemaining !== null
+                    ? `${daysRemaining} ${daysRemaining === 1 ? 'day' : 'days'} left (valid till ${validTillDay}).`
+                    : 'Your current weekly protection is active.'}
+                </p>
               </div>
               <div className="grid grid-cols-2 gap-4 rounded-[28px] bg-white/10 p-5 backdrop-blur-sm">
                 <div>
@@ -210,7 +267,7 @@ export default function Home({ profile, session, onLogout }) {
             accent={zoneStatus?.locked ? 'text-amber-600' : 'text-indigo-600'}
           />
           <MetricCard
-            label="Forecast Premium"
+            label="Next Week Estimate"
             value={`₹${forecast?.premium_estimate || 0}`}
             note={forecast?.forecast_message || 'Forecast data unavailable'}
             accent="text-sky-600"

@@ -3,6 +3,14 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { apiClient } from '../services/api';
 
+function toLocalISODate(value = new Date()) {
+  const date = value instanceof Date ? value : new Date(value);
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
 export default function PolicyPurchase({ profile, onLogout }) {
   const navigate = useNavigate();
   const [premium, setPremium] = useState(null);
@@ -94,13 +102,11 @@ export default function PolicyPurchase({ profile, onLogout }) {
     try {
       setLoading(true);
       setError('');
-      const now = new Date();
-      const coverageStart = new Date(now);
-      coverageStart.setHours(0, 0, 0, 0);
+      const coverageStart = toLocalISODate(new Date());
       
       const res = await apiClient.post('/premiums/calculate', {
         zone_id: selectedZone,
-        week_start: coverageStart.toISOString().split('T')[0],
+        week_start: coverageStart,
         centroid_lat: currentCoords?.latitude,
         centroid_lon: currentCoords?.longitude,
       });

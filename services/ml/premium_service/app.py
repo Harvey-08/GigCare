@@ -75,25 +75,42 @@ def fetch_forecast_features(lat, lon):
         }
 
 
-def build_feature_row(payload, forecast):
+def build_feature_map(payload, forecast):
     now = datetime.now()
     city_id = payload.get('city_id', 'BLR')
     zone_risk_score = float(payload.get('zone_risk_score', 1.0))
-    flood_prone = int(bool(payload.get('flood_prone', False)))
+    rain_days_count = int(forecast.get('rain_days_count', 0))
+    heavy_rain_days = int(forecast.get('heavy_rain_days', 0))
+    heat_days = int(forecast.get('heat_days', 0))
+    past_claim_count = int(payload.get('past_claim_count', 0) or 0)
 
-    return np.array([[
-        forecast['rain_mm_7day'],
-        forecast['max_temp_c'],
-        forecast['min_temp_c'],
-        forecast['rain_days_count'],
-        forecast['heavy_rain_days'],
-        forecast['heat_days'],
-        zone_risk_score,
-        flood_prone,
-        now.month,
-        1 if now.month in [6, 7, 8, 9] else 0,
-        1 if now.month in [3, 4, 5] else 0,
-    ]]), city_id
+    # Provide a superset feature map so old (9-feature) and new (11-feature)
+    # models can both infer without shape mismatches.
+    features = {
+        # Newer weather-rich feature set
+        'rain_mm_7day': float(forecast.get('rain_mm_7day', 0.0)),
+        'max_temp_c': float(forecast.get('max_temp_c', 32.0)),
+        'min_temp_c': float(forecast.get('min_temp_c', 22.0)),
+        'rain_days_count': rain_days_count,
+        'heavy_rain_days': heavy_rain_days,
+        'heat_days': heat_days,
+        'zone_risk_score': zone_risk_score,
+        'flood_prone': int(bool(payload.get('flood_prone', False))),
+        'month': now.month,
+        'is_monsoon': 1 if now.month in [6, 7, 8, 9] else 0,
+        'is_summer': 1 if now.month in [3, 4, 5] else 0,
+        # Legacy 9-feature model compatibility
+        'historical_rain_events': rain_days_count,
+        'historical_heat_events': heat_days,
+        'forecast_rain_prob': min(1.0, max(0.0, heavy_rain_days / 7.0)),
+        'forecast_max_temp_c': float(forecast.get('max_temp_c', 32.0)),
+        'worker_experience_weeks': float(payload.get('worker_experience_weeks', 0) or 0),
+        'past_claim_count': past_claim_count,
+        'past_fraud_flags': float(payload.get('past_fraud_flags', 0) or 0),
+        'past_claim_ratio': float(payload.get('past_claim_ratio', min(1.0, past_claim_count / 10.0)) or 0),
+    }
+
+    return features, city_id
 
 
 def fallback_premium(forecast, zone_risk_score, city_id):
@@ -141,9 +158,10 @@ def predict_premium():
         lon = float(payload.get('centroid_lon'))
 
         forecast = fetch_forecast_features(lat, lon)
-        feature_row, city_id = build_feature_row(payload, forecast)
+        feature_map, city_id = build_feature_map(payload, forecast)
 
         if model is not None and FEATURES:
+            feature_row = np.array([[feature_map.get(feature, 0.0) for feature in FEATURES]])
             premium = float(model.predict(feature_row)[0])
             premium = max(80, min(250, premium))
         else:
