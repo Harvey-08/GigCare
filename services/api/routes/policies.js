@@ -6,6 +6,31 @@ const supabase = require('../models/supabase');
 
 const router = express.Router();
 
+function getTierPricing(basePremium, coverageTier) {
+  const numericBase = Number(basePremium || 0);
+  const tier = String(coverageTier || '').toUpperCase();
+
+  if (tier === 'SEED') {
+    return {
+      premiumPaid: Math.round(numericBase * 0.65),
+      maxPayout: 600,
+    };
+  }
+
+  if (tier === 'PREMIUM') {
+    return {
+      premiumPaid: Math.round(numericBase * 1.35),
+      maxPayout: 1800,
+    };
+  }
+
+  // Default to STANDARD pricing.
+  return {
+    premiumPaid: Math.round(numericBase),
+    maxPayout: 1200,
+  };
+}
+
 // =====================================
 // POST /api/policies
 // =====================================
@@ -83,6 +108,10 @@ router.post('/', authMiddleware('worker'), async (req, res) => {
         .limit(1)
         .maybeSingle();
 
+      if (result.error && result.error.code === '42703') {
+        return null;
+      }
+
       if (result.error && result.error.code !== 'PGRST116') {
         throw result.error;
       }
@@ -108,12 +137,14 @@ router.post('/', authMiddleware('worker'), async (req, res) => {
       });
     }
 
+    const { premiumPaid, maxPayout } = getTierPricing(quote.premium_rupees, coverage_tier);
+
     // Create policy
     const { data: policy, error: policyError } = await db.createPolicy(
       user_id,
       coverage_tier,
-      quote.premium_rupees,
-      600, // Simplified for demo
+      premiumPaid,
+      maxPayout,
       quote.week_start,
       quote.week_end
     );
