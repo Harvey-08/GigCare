@@ -69,10 +69,20 @@ def calculate_trust_score(features, worker_id, device_fp, ip, wifi_ssids, claim_
     fraud_graph.add_claim_signals(worker_id, device_fp, ip, wifi_ssids, city_id=claim_city_id)
 
     if fraud_graph.is_worker_in_ring(worker_id):
+        ring_context = next(
+            (
+                ring
+                for ring in fraud_graph.detect_rings()
+                if worker_id in ring.get('worker_ids', [])
+            ),
+            None,
+        )
+
         return {
             'trust_score': 0.0,
             'action': 'DENIED',
-            'explanation': 'Account is part of a detected fraud ring',
+            'explanation': ring_context.get('summary') if ring_context else 'Account is part of a detected fraud ring',
+            'fraud_ring': ring_context,
             'fraud_probability': 1.0,
         }
 

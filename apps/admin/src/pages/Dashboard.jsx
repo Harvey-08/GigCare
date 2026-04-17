@@ -226,7 +226,12 @@ export default function Dashboard({ profile, onLogout }) {
                             <p className="text-xs font-black uppercase tracking-[0.25em] text-slate-500">Ring {index + 1}</p>
                             <p className="text-xs font-black text-rose-600">{ring.ring_size} workers</p>
                           </div>
-                          <p className="mt-2 text-sm font-medium text-slate-700">{ring.is_cross_city ? 'Cross-city network' : 'Single-city cluster'}</p>
+                          <p className="mt-2 text-sm font-medium text-slate-700">{ring.summary || (ring.is_cross_city ? 'Cross-city network' : 'Single-city cluster')}</p>
+                          <div className="mt-3 space-y-2 text-[11px] font-semibold text-slate-500">
+                            <p>Location: {ring.dominant_city_id || (ring.cities_involved || []).join(', ') || 'Unknown'}</p>
+                            <p>Signals: {(ring.suspicious_indicators || []).join(' • ') || 'No shared signals listed'}</p>
+                            <p>Workers: {(ring.worker_details || []).slice(0, 3).map((worker) => worker.worker_id || worker).join(', ')}{(ring.worker_details || []).length > 3 ? ' ...' : ''}</p>
+                          </div>
                         </div>
                       ))
                     )}

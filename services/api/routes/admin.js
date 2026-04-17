@@ -175,30 +175,37 @@ router.get('/dashboard', authMiddleware('admin'), async (req, res) => {
       .eq('status', 'ACTIVE');
     const totalPremiums = (premiumsData || []).reduce((sum, p) => sum + p.premium_paid, 0);
 
-    // 2. Total Payouts
-    const { data: payoutsData } = await supabase
+    // 2. Claims data (DB + fallback compatibility)
+    const { data: dbClaims } = await supabase
       .from('claims')
-      .select('final_payout')
-      .eq('status', 'PAID');
+      .select('claim_id, policy_id, trigger_event_id, status, final_payout, created_at');
 
     const fallbackClaims = claimStore.listFallbackClaims();
-    const fallbackPaidClaims = fallbackClaims.filter((claim) => claim.status === 'PAID');
-    const totalPayouts =
-      (payoutsData || []).reduce((sum, c) => sum + (c.final_payout || 0), 0) +
-      fallbackPaidClaims.reduce((sum, c) => sum + Number(c.final_payout || 0), 0);
+    const combinedClaims = dedupeClaims(dbClaims || [], fallbackClaims);
+
+    // Treat all non-denied/non-closed claims as current liability so manual triggers
+    // immediately affect payout/loss/reserve metrics.
+    const liabilityStatuses = new Set([
+      'AUTO_CREATED',
+      'TRUST_EVALUATED',
+      'APPROVED',
+      'PARTIAL',
+      'FLAGGED',
+      'PAID',
+    ]);
+
+    const totalClaimLiability = combinedClaims
+      .filter((claim) => liabilityStatuses.has(claim.status))
+      .reduce((sum, claim) => sum + Number(claim.final_payout || 0), 0);
+
+    const totalPayouts = Math.min(totalClaimLiability, totalPremiums);
+    const reservePool = Math.max(0, totalPremiums - totalPayouts);
+    const lossRatioPercent = totalPremiums > 0 ? Math.round((totalPayouts / totalPremiums) * 100) : 0;
 
     // 3. Claims by Status
-    const { data: statusData } = await supabase
-      .from('claims')
-      .select('status');
-
-    const combinedStatusRows = [
-      ...(statusData || []),
-      ...fallbackClaims.map((claim) => ({ status: claim.status })),
-    ];
-
-    const claimsByStatus = combinedStatusRows.reduce((acc, c) => {
-      acc[c.status] = (acc[c.status] || 0) + 1;
+    const claimsByStatus = combinedClaims.reduce((acc, claim) => {
+      const status = claim.status || 'UNKNOWN';
+      acc[status] = (acc[status] || 0) + 1;
       return acc;
     }, {});
 
@@ -218,22 +225,19 @@ router.get('/dashboard', authMiddleware('admin'), async (req, res) => {
 
     // 5. Claims Today (last 24h)
     const twentyFourHoursAgo = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
-    const { data: claimsTodayData } = await supabase
-      .from('claims')
-      .select('claim_id')
-      .gte('created_at', twentyFourHoursAgo);
-
-    const fallbackClaimsTodayCount = fallbackClaims.filter(
+    const claimsTodayCount = combinedClaims.filter(
       (claim) => new Date(claim.created_at || 0) >= new Date(twentyFourHoursAgo)
     ).length;
 
     res.json({
       data: {
-        loss_ratio_percent: totalPremiums > 0 ? Math.round((totalPayouts / totalPremiums) * 100) : 0,
         total_premiums_collected: totalPremiums,
         total_payouts: totalPayouts,
-        reserve_pool: Math.max(0, totalPremiums - totalPayouts),
-        claims_today: (claimsTodayData || []).length + fallbackClaimsTodayCount,
+        reserve_pool: reservePool,
+        total_claim_liability: totalClaimLiability,
+        unreserved_claim_liability: Math.max(0, totalClaimLiability - totalPremiums),
+        loss_ratio_percent: lossRatioPercent,
+        claims_today: claimsTodayCount,
         claims_by_status: claimsByStatus,
         recent_claims: mergedRecentClaims,
       },
@@ -503,7 +507,10 @@ router.get('/cities/metrics', authMiddleware('admin'), async (req, res) => {
         .filter((value) => Number.isFinite(value) && value > 0);
       const minPremium = premiumValues.length ? Math.min(...premiumValues) : null;
       const maxPremium = premiumValues.length ? Math.max(...premiumValues) : null;
-      const totalPayouts = cityClaims.reduce((sum, claim) => sum + Number(claim.final_payout || 0), 0);
+      const totalClaimLiability = cityClaims.reduce((sum, claim) => sum + Number(claim.final_payout || 0), 0);
+      const totalPayouts = Math.min(totalClaimLiability, totalPremiums);
+      const reservePool = Math.max(0, totalPremiums - totalPayouts);
+      const lossRatio = totalPremiums > 0 ? Number((totalPayouts / totalPremiums).toFixed(2)) : 0;
 
       const avgRisk = cityZones.length
         ? cityZones.reduce((sum, zone) => sum + Number(zone.zone_risk_score || 1), 0) / cityZones.length
@@ -522,7 +529,10 @@ router.get('/cities/metrics', authMiddleware('admin'), async (req, res) => {
         total_claims: cityClaims.length,
         total_payouts: totalPayouts,
         total_premiums: totalPremiums,
-        loss_ratio: totalPremiums > 0 ? Number((totalPayouts / totalPremiums).toFixed(2)) : 0,
+        total_claim_liability: totalClaimLiability,
+        unreserved_claim_liability: Math.max(0, totalClaimLiability - totalPremiums),
+        reserve_pool: reservePool,
+        loss_ratio: lossRatio,
         premium_range: minPremium !== null ? `Rs.${Math.round(minPremium)}-${Math.round(maxPremium || minPremium)}` : 'No active policies',
       };
     });

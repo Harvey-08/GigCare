@@ -9,6 +9,9 @@ services:
       - "3011:3001"
     environment:
       SUPABASE_URL: ${SUPABASE_URL}
+      # Backend-only secret. Set real value in .env as:
+      # SUPABASE_SERVICE_ROLE_KEY=your_supabase_service_role_key_backend_only
+      SUPABASE_SERVICE_ROLE_KEY: ${SUPABASE_SERVICE_ROLE_KEY}
       SUPABASE_ANON_KEY: ${SUPABASE_ANON_KEY}
       JWT_SECRET: ${JWT_SECRET}
       JWT_EXPIRES_IN: ${JWT_EXPIRES_IN}
@@ -74,6 +77,9 @@ services:
     container_name: gigcare-trigger-engine
     environment:
       SUPABASE_URL: ${SUPABASE_URL}
+      # Backend-only secret. Set real value in .env as:
+      # SUPABASE_SERVICE_ROLE_KEY=your_supabase_service_role_key_backend_only
+      SUPABASE_SERVICE_ROLE_KEY: ${SUPABASE_SERVICE_ROLE_KEY}
       SUPABASE_ANON_KEY: ${SUPABASE_ANON_KEY}
       NODE_ENV: development
       API_URL: http://api:3001
