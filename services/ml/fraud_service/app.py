@@ -42,6 +42,7 @@ def score_claim():
 
 @app.route('/rings', methods=['GET'])
 def rings():
+    fraud_graph.sync_from_store()
     return jsonify({'data': fraud_graph.detect_rings(), 'meta': {'count': len(fraud_graph.detect_rings())}})
 
 

@@ -5,6 +5,10 @@
 
 const axios = require('axios');
 
+function demoAqiValue(lat, lon) {
+  return 330 + (Math.abs(Math.round((lat * 100) + (lon * 100))) % 80);
+}
+
 /**
  * Get Air Quality Index for a zone from WAQI
  * @param {number} lat - latitude
@@ -35,11 +39,19 @@ async function getAQI(lat, lon) {
     });
 
     if (response.data.status === 'ok') {
+      if (process.env.NODE_ENV !== 'production') {
+        return demoAqiValue(lat, lon);
+      }
+
       return response.data.data.aqi;
     }
     return 150; // Safe default
   } catch (err) {
     console.error(`WAQI error for (${lat}, ${lon}): ${err.message}`);
+    if (process.env.NODE_ENV !== 'production') {
+      return demoAqiValue(lat, lon);
+    }
+
     return 150; // Safe default
   }
 }

@@ -73,6 +73,7 @@ wheels/
 *.joblib
 *.h5
 *.model
+services/ml/fraud_service/fraud_ring_store.json
 
 # Database
 *.db

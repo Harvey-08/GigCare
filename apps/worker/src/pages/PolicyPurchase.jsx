@@ -11,6 +11,10 @@ function toLocalISODate(value = new Date()) {
   return `${year}-${month}-${day}`;
 }
 
+function buildDemoPaymentId(policyId) {
+  return `demo_payment_${policyId}_${Date.now()}`;
+}
+
 export default function PolicyPurchase({ profile, onLogout }) {
   const navigate = useNavigate();
   const [premium, setPremium] = useState(null);
@@ -143,8 +147,13 @@ export default function PolicyPurchase({ profile, onLogout }) {
         throw new Error('Policy ID missing from purchase response');
       }
 
-      // Step 2: Simulate Razorpay payment / activation
-      await apiClient.post(`/policies/${policyId}/activate`);
+      const paymentId = buildDemoPaymentId(policyId);
+
+      // Step 2: Simulate a successful Razorpay callback for demo mode.
+      await apiClient.post('/webhooks/razorpay-payment', {
+        policy_id: policyId,
+        payment_id: paymentId,
+      });
 
       // Step 3: Synchronize profile location (Ensure triggers find this worker in the new zone)
       if (currentCoords) {
@@ -155,7 +164,26 @@ export default function PolicyPurchase({ profile, onLogout }) {
       }
 
       // Success
-      navigate('/');
+      sessionStorage.setItem(
+        'gigcare_purchase_notice',
+        JSON.stringify({
+          paymentId,
+          policyId,
+          tier,
+          mode: 'demo',
+        })
+      );
+
+      navigate('/', {
+        state: {
+          purchaseSuccess: {
+            paymentId,
+            policyId,
+            tier,
+            mode: 'demo',
+          },
+        },
+      });
     } catch (err) {
       if (err.response?.status === 409 && err.response?.data?.code === 'POLICY_ALREADY_EXISTS') {
         const existing = err.response?.data?.data;
@@ -301,12 +329,12 @@ export default function PolicyPurchase({ profile, onLogout }) {
               disabled={purchasing}
               className="w-full bg-teal-600 text-white py-3 rounded-lg font-semibold hover:bg-teal-700 disabled:opacity-50"
             >
-              {purchasing ? 'Processing...' : 'Buy Policy'}
+              {purchasing ? 'Processing premium payment...' : 'Pay Premium & Activate'}
             </button>
 
             {/* Simulation Note */}
             <div className="p-3 bg-yellow-50 border border-yellow-200 rounded-lg text-xs text-yellow-800">
-              ℹ️ Demo mode: Payment is simulated. In production, you'll be redirected to Razorpay.
+              ℹ️ Demo mode: this simulates the premium payment made at policy purchase and activates the policy without charging money.
             </div>
           </>
         ) : null}

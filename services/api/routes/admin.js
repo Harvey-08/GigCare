@@ -38,6 +38,28 @@ function getAqiCategory(aqi) {
   return 'HAZARDOUS';
 }
 
+function getTriggerDefaults(triggerType) {
+  const normalized = String(triggerType || 'POOR_AQI').toUpperCase();
+
+  if (normalized === 'HEAVY_RAIN') {
+    return { triggerType: normalized, triggerValue: 65, severity: 1.3 };
+  }
+
+  if (normalized === 'EXTREME_HEAT') {
+    return { triggerType: normalized, triggerValue: 42, severity: 1.0 };
+  }
+
+  if (normalized === 'CURFEW') {
+    return { triggerType: normalized, triggerValue: 1, severity: 1.4 };
+  }
+
+  if (normalized === 'APP_OUTAGE' || normalized === 'OTHER_REASON') {
+    return { triggerType: 'APP_OUTAGE', triggerValue: 1, severity: 1.2 };
+  }
+
+  return { triggerType: 'POOR_AQI', triggerValue: 360, severity: 1.5 };
+}
+
 async function fetchCityWeatherAqiWeek(cityConfig) {
   const lat = cityConfig.centroid_lat;
   const lon = cityConfig.centroid_lon;
@@ -254,6 +276,7 @@ router.post('/trigger-event', authMiddleware('admin'), async (req, res) => {
         disruption_hours: 3,
         severity_factor: severity,
         event_id: event.event_id,
+        force_create: true,
         reason: reason || null,
       }, {
         headers: { 'x-internal-service-key': INTERNAL_SERVICE_KEY },
@@ -276,6 +299,100 @@ router.post('/trigger-event', authMiddleware('admin'), async (req, res) => {
   } catch (err) {
     console.error('Trigger event error:', err);
     res.status(500).json({ error: 'Failed to create trigger event', code: 'TRIGGER_FAILED' });
+  }
+});
+
+// =====================================================
+// POST /api/admin/trigger-demo-payout
+// Guarantees trigger targeting an active policy zone for end-to-end demos
+// =====================================================
+router.post('/trigger-demo-payout', authMiddleware('admin'), async (req, res) => {
+  try {
+    const nowIsoDate = new Date().toISOString().split('T')[0];
+    const requestedType = req.body?.trigger_type;
+    const defaults = getTriggerDefaults(requestedType);
+
+    const { data: activePolicies, error: activePoliciesError } = await supabase
+      .from('policies')
+      .select('*, profiles!inner(id, full_name, zone_id)')
+      .eq('status', 'ACTIVE')
+      .lte('week_start', nowIsoDate)
+      .gte('week_end', nowIsoDate)
+      .limit(25);
+
+    if (activePoliciesError) {
+      throw activePoliciesError;
+    }
+
+    if (!activePolicies || activePolicies.length === 0) {
+      return res.status(404).json({
+        error: 'No active policies found for a guaranteed demo trigger',
+        code: 'NO_ACTIVE_POLICIES',
+      });
+    }
+
+    const targetPolicy = activePolicies.find((policy) => policy?.profiles?.zone_id) || activePolicies[0];
+    const targetPolicyId = targetPolicy?.policy_id || targetPolicy?.id;
+    const zoneId = targetPolicy?.profiles?.zone_id;
+    const cityId = String(zoneId || '').split('_')[0] || null;
+
+    if (!zoneId) {
+      return res.status(422).json({
+        error: 'Target policy is missing zone information',
+        code: 'TARGET_ZONE_MISSING',
+      });
+    }
+
+    const { data: event, error: eventError } = await db.createTriggerEvent(
+      zoneId,
+      defaults.triggerType,
+      defaults.triggerValue,
+      defaults.severity
+    );
+
+    if (eventError) {
+      throw eventError;
+    }
+
+    const claimsRes = await axios.post(`${API_URL}/api/fraud/auto-create`, {
+      zone_id: zoneId,
+      city_id: cityId,
+      trigger_type: defaults.triggerType,
+      trigger_value: defaults.triggerValue,
+      disruption_hours: 3,
+      severity_factor: defaults.severity,
+      event_id: event.event_id,
+      force_create: true,
+      reason: 'Guaranteed admin demo trigger',
+    }, {
+      headers: { 'x-internal-service-key': INTERNAL_SERVICE_KEY },
+    });
+
+    const createdClaims = claimsRes.data?.data || [];
+    const paidOrApproved = createdClaims.filter((claim) => ['APPROVED', 'PAID'].includes(claim.status)).length;
+
+    res.status(201).json({
+      data: {
+        event_id: event.event_id,
+        trigger_type: defaults.triggerType,
+        trigger_value: defaults.triggerValue,
+        severity_factor: defaults.severity,
+        zone_id: zoneId,
+        city_id: cityId,
+        target_policy_id: targetPolicyId,
+        target_worker_id: targetPolicy.user_id || targetPolicy.worker_id || targetPolicy?.profiles?.id,
+        target_worker_name: targetPolicy?.profiles?.full_name || 'Worker',
+        claims_created: createdClaims.length,
+        claims_approved_or_paid: paidOrApproved,
+      },
+      meta: { timestamp: new Date().toISOString() },
+    });
+  } catch (err) {
+    console.error('Guaranteed demo trigger error:', err);
+    res.status(500).json({
+      error: 'Failed to execute guaranteed demo trigger',
+      code: 'DEMO_TRIGGER_FAILED',
+    });
   }
 });
 

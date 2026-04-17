@@ -1,346 +1,172 @@
-# GigCare: Parametric Insurance for Gig Workers
+# GigCare
 
-## Phase 2: Automation & Protection
+GigCare is a parametric insurance platform for gig delivery workers. It gives weekly coverage, automatically creates claims when weather or disruption conditions are met, and routes claims through a fraud check before payout. The system is built to show a complete insurance flow: purchase, activation, trigger detection, claim creation, review, and payout.
 
-Automatic, weather-triggered micro-insurance for India's gig delivery workers. Real-time coverage for rain, heat, and air quality hazards using ML-driven premium pricing and rule-based claims automation.
+## What This Repo Contains
 
----
+- Worker app in [apps/worker](apps/worker) for registration, policy purchase, coverage status, and claim tracking.
+- Admin app in [apps/admin](apps/admin) for dashboard metrics, manual trigger control, and fraud review.
+- Backend API in [services/api](services/api) for auth, zones, premiums, policies, claims, admin actions, and webhooks.
+- Premium pricing service in [services/ml/premium_service](services/ml/premium_service) that uses weather, zone risk, and coverage inputs to produce weekly pricing.
+- Trigger engine in [services/trigger-engine](services/trigger-engine) that evaluates weather and disruption signals and creates claims automatically.
+- Fraud layer in [services/api/routes](services/api/routes) and [services/api/models](services/api/models) that scores each claim before payout and applies caps, duplicate protection, and action escalation.
 
-## 🎯 What We Built (Phase 2)
+## Setup After Clone
 
-✅ **Automatic Claims**: Weather triggers automatically create claims (no paperwork)
-✅ **Dynamic Pricing**: ML model calculates zone-specific premiums (₹60-280/week)
-✅ **Smart Payouts**: Trust score algorithm reduces fraud while maintaining 95%+ approval rate
-✅ **Real-time Dashboard**: Admin panel shows metrics and can fire test events
-✅ **Responsive PWA**: Works on any browser (tested on Chrome, Firefox, Safari)
+The quickest local setup is documented in [SETUP_AFTER_CLONE.md](SETUP_AFTER_CLONE.md). It covers cloning, environment variables, service URLs, key sources, API fetch points, and demo mode.
 
-### Key Metrics
-- **3-tier coverage**: SEED (₹80), STANDARD (₹162), PREMIUM (₹220)
-- **5 operational zones**: Koramangala, Whitefield, Indiranagar, HSR Layout, Bommanahalli
-- **3 trigger types**: Heavy Rain (≥50mm), Extreme Heat (≥40°C), Poor AQI (≥300)
-- **Automated trust score**: Combines GPS accuracy, claim timing, and worker history
+Useful companion docs:
 
----
+- [SETUP_GUIDE.md](SETUP_GUIDE.md) for the shorter setup walkthrough.
+- [DEMO_NAVIGATION.md](DEMO_NAVIGATION.md) for the judge/demo flow.
+- [HACKATHON_SUMMARY.md](HACKATHON_SUMMARY.md) for the submission summary.
 
-## 🏗️ Architecture
-
-```
-┌─────────────────────────────────────────────────────────────────┐
-│                        GIGCARE SYSTEM                            │
-├─────────────────────────────────────────────────────────────────┤
-│                                                                  │
-│  ┌──────────────────────────┐    ┌──────────────────────────┐  │
-│  │   WORKER APP (React)     │    │   ADMIN APP (React)      │  │
-│  │  • Registration (3-step) │    │  • Dashboard (metrics)   │  │
-│  │  • Policy Purchase       │    │  • Trigger Control       │  │
-│  │  • Claims View           │    │  • Fraud Rings (Phase 3) │  │
-│  └──────────────┬───────────┘    └──────────────┬───────────┘  │
-│                 │                               │                │
-│                 └───────────────┬────────────────┘                │
-│                                 │                                 │
-│        ┌────────────────────────▼────────────────────────┐       │
-│        │   API Server (Node.js Express)   :3001          │       │
-│        │  • Auth (register, login, OTP)                  │       │
-│        │  • Premium calculation (ML)                     │       │
-│        │  • Policy CRUD                                  │       │
-│        │  • Claims auto-creation                         │       │
-│        │  • Admin dashboard                              │       │
-│        │  • Razorpay webhooks                            │       │
-│        └───────────────────┬──────────────────────────────┘       │
-│                            │                                      │
-│        ┌───────────────────┼──────────────────────┐              │
-│        │                   │                      │               │
-│  ┌─────▼────────┐  ┌──────▼───────┐   ┌─────────▼──────┐        │
-│  │  PostgreSQL  │  │  ML Premium  │   │ Trigger Engine │        │
-│  │  Database    │  │  Service     │   │   (node-cron)  │        │
-│  │  • schemas   │  │  (Flask)     │   │  • Every 30min │        │
-│  │  • seed data │  │  • RandomFor │   │  • Evaluates   │        │
-│  │              │  │  • Fallback  │   │    5 triggers  │        │
-│  └──────────────┘  └──────────────┘   └────────────────┘        │
-│                                                                   │
-└─────────────────────────────────────────────────────────────────┘
-```
-
-### Service Breakdown
-
-| Service | Tech | Port | Purpose |
-|---------|------|------|---------|
-| **API** | Node.js + Express | 3001 | Main backend (auth, policies, claims, admin) |
-| **PostgreSQL** | PostgreSQL 15 | 5432 | Schema (10 tables) + seed data (5 workers, 5 policies) |
-| **ML Premium** | Python + Flask | 5001 | ML inference (RandomForest pricing model) |
-| **Trigger Engine** | Node.js + cron | — | Background job (runs every 30 min or on-demand) |
-| **Worker App** | React 18 | 3000 | Worker-facing PWA |
-| **Admin App** | React 18 | 3002 | Admin dashboard (metrics, trigger control) |
-
----
-
-## 🚀 Quick Start
-
-### Prerequisites
-- Docker & Docker Compose
-- Node.js v20+ (optional - for local development)
-- Python 3.11+ (optional - for local development)
-- Git
-
-### 1. Clone & Start (3 Commands)
+### Quick Start
 
 ```bash
-# Clone the repository
-git clone https://github.com/Harvey-08/GigCare.git
+git clone <repo-url>
 cd gigcare_phase2_build
-
-# Start everything (database, API, ML, React apps)
-./start.sh
-```
-
-**That's it!** The app will be running at:
-- **Worker App**: http://localhost:3000
-- **Admin App**: http://localhost:3002
-- **API Server**: http://localhost:3001
-
-### 2. Demo Credentials
-
-**Worker Login:**
-- Phone: `+919876543210`
-- OTP: `123456`
-
-**Admin Login:**
-- Phone: `9876543210`
-- OTP: `123456`
-
-### 3. Manual Setup (Alternative)
-
-If you prefer manual control:
-
-```bash
-# Clone repo
-git clone https://github.com/Harvey-08/GigCare.git
-cd gigcare_phase2_build
-
-# Copy environment (optional - defaults work for demo)
 cp .env.example .env
-
-# Start services
-docker-compose up -d
-
-# Check status
-docker-compose ps
+docker compose up -d --build
 ```
 
-### 4. Development Mode
+### Where the apps run
 
-For local development (requires Node.js & Python):
+- Worker app: http://localhost:3010
+- Admin app: http://localhost:3013
+- API server: http://localhost:3011/api
+- API health: http://localhost:3011/health
+- ML premium service: http://localhost:5001
+- ML fraud service: http://localhost:5002
 
-```bash
-# Start only database
-docker-compose up -d postgres
+### Demo credentials
 
-# Install dependencies
-cd services/api && npm install
-cd ../ml/premium_service && pip install -r requirements.txt
-cd ../../apps/worker && npm install
-cd ../admin && npm install
+- Admin login for demo use: `gigcare@admin.com` / `Admin123@`
+- Worker login uses the demo worker flow in the app
 
-# Start services locally
-cd services/api && npm start
-cd ../ml/premium_service && python app.py
-cd ../../apps/worker && npm start
-cd ../admin && npm start
-```
+## System Overview
 
-### 2. Start All Services
+### Core flow
 
-```bash
-# Start database, API, ML, trigger engine (Docker Compose)
-docker-compose up -d
+1. A worker signs in and buys a weekly policy.
+2. Premium pricing is calculated from zone risk and weather inputs.
+3. When conditions cross the configured thresholds, the trigger engine creates a claim.
+4. The claim is evaluated by the fraud layer using worker history, location consistency, device/IP linkage, and timing signals.
+5. Approved claims are paid out automatically; partial or flagged claims are held for review.
 
-# Wait for PostgreSQL health check (15-20 seconds)
-docker exec gigcare-postgres pg_isready -U gigcare_user -d gigcare
+### Key metrics
 
-# Train ML model
-cd services/ml/premium_service
-python train.py
-cd ../../../
+- 3 coverage tiers: SEED, STANDARD, PREMIUM.
+- 5 operational zones.
+- 3 main environmental trigger types plus social disruption triggers.
+- Automated trust score for claim screening.
 
-# Install and start Worker app
-cd apps/worker
-npm install
-npm start  # Opens http://localhost:3000
+## Key Features
 
-# In another terminal: Install and start Admin app
-cd apps/admin
-npm install
-npm start  # Opens http://localhost:3002
-```
+- Weekly policy coverage instead of long insurance contracts.
+- Automatic claims from trigger events with no manual paperwork.
+- Live weather and AQI awareness.
+- Admin-triggered demo path that can target a real active policy zone.
+- Fraud hardening with reputation, identity linkage, and payout controls.
+- Clear worker and admin dashboards that make the system easy to present in a hackathon.
 
-### 3. Test the Flow
+## Fraud Detection
 
-**Worker App** (http://localhost:3000):
-1. Click "Get Started"
-2. Phone: `9876543210`, Next
-3. OTP: `123456`, Next
-4. Name: "John Doe", Platform: "ZOMATO", Zone: "Whitefield", Complete
-5. See premium calculated by ML (zone-dependent)
-6. Click "Buy Policy" and see ACTIVE status
+The fraud system is designed to catch claims that do not match normal worker behavior.
 
-**Admin App** (http://localhost:3002):
-1. Phone: `9876543210`, OTP: `123456`, Login
-2. See dashboard metrics (loss ratio, total payouts, claims)
-3. Click 🚀 "Fire Trigger Event"
-4. Select zone, trigger type, click "Fire"
-5. Watch claims appear in dashboard table
+It checks for:
 
-**Verify Full Flow**:
-1. Back to Worker app, refresh home page
-2. See new claim under "Recent Claims" with payout amount
-3. Click on claim to see trust score breakdown
+- repeated claims from the same trigger event
+- unusual claim velocity in short windows
+- device or IP reuse across multiple workers
+- claims inconsistent with location history
+- suspicious timing patterns across zones or cities
+- high historical risk scores from previous outcomes
+
+How it responds:
+
+- clean claims can be approved quickly
+- medium-risk claims can be partially paid or flagged
+- high-risk claims can be denied or escalated
+- daily payout caps prevent overpayment in a single day
+
+## Premium Model
+
+The premium service is trained on synthetic samples that mirror weather, zone risk, and payout behavior. That lets the model produce realistic weekly pricing during the demo while still using live weather inputs at runtime. The model is used to differentiate zones so that higher-risk areas receive higher premiums than lower-risk areas.
+
+## Main APIs
+
+Worker-facing:
+
+- `POST /api/auth/register`
+- `POST /api/auth/login`
+- `GET /api/auth/me`
+- `GET /api/zones`
+- `GET /api/zones/:zone_id/status`
+- `GET /api/zones/:zone_id/forecast`
+- `POST /api/premiums/calculate`
+- `POST /api/policies`
+- `POST /api/policies/:policy_id/activate`
+- `GET /api/policies/worker/:user_id`
+- `GET /api/claims/worker/:user_id`
+
+Admin-facing:
+
+- `POST /api/admin/login`
+- `GET /api/admin/dashboard`
+- `GET /api/admin/cities/metrics`
+- `GET /api/admin/fraud-rings`
+- `POST /api/admin/trigger-event`
+- `POST /api/admin/trigger-demo-payout`
+
+Internal/demo endpoints:
+
+- `POST /api/claims/auto-create`
+- `POST /api/fraud/auto-create`
+- `POST /api/webhooks/razorpay-payment`
+
+## Service Layout
+
+| Service | Purpose | Local URL |
+|---|---|---|
+| Worker app | Worker-facing UI | http://localhost:3010 |
+| Admin app | Admin dashboard | http://localhost:3013 |
+| API | Auth, policies, claims, admin | http://localhost:3011/api |
+| Premium ML | Premium inference | http://localhost:5001 |
+| Fraud ML | Fraud scoring | http://localhost:5002 |
+
+## Future Improvements
+
+- Move trigger and fraud runtime state fully into the database for multi-instance reliability.
+- Replace demo payment mode with production payment integration when needed.
+- Expand model retraining using real policy and claim history.
+- Add broader automated integration tests for trigger, claim, and payout flows.
+- Improve region coverage by adding more cities and more live data sources.
 
 ---
 
-## 📊 Database Schema
+## Key Paths
 
-### Tables
-- `zones` (5 seeded) - Geographical zones with risk scores
-- `workers` (5 seeded) - Gig workers with profiles
-- `devices` - Worker devices for tracking
-- `policies` (5 seeded) - Active insurance policies
-- `premium_quotes` - Quote history (expires 24h)
-- `claims` (3 seeded) - Insurance claims with payouts
-- `trigger_events` - Historical trigger events
-- `location_signals` - GPS signals for trust scoring
+Open these paths when you want to inspect the main implementation pieces:
 
-### Key ENUMS
-- `coverage_tier`: SEED | STANDARD | PREMIUM
-- `claim_status`: APPROVED | PARTIAL | FLAGGED | PAID
-- `policy_status`: PENDING_PAYMENT | ACTIVE | EXPIRED
-- `trigger_type`: HEAVY_RAIN | EXTREME_HEAT | POOR_AQI | CURFEW | APP_OUTAGE
-
----
-
-## 🧪 API Endpoints
-
-### Authentication
-```
-POST /api/auth/register
-  { phone, name, platform, zone_id } → { token, worker }
-
-POST /api/auth/login
-  { phone, otp } → { token, worker }
-
-GET /api/auth/me
-  → { worker_id, name, platform, zone_id, role }
-```
-
-### Zones & Premiums
-```
-GET /api/zones
-  → [{ zone_id, name, zone_risk_score, zone_risk_level }]
-
-POST /api/premiums/calculate
-  { zone_id, week_start } → { premium_rupees, coverage_tier, max_payout, quote_id }
-```
-
-### Policies
-```
-POST /api/policies
-  { quote_id, coverage_tier } → { policy_id, status: PENDING_PAYMENT }
-
-GET /api/policies/worker/:worker_id
-  → [{ policy_id, coverage_tier, premium, status, activation_date }]
-
-POST /api/policies/:policy_id/activate
-  → { policy_id, status: ACTIVE }
-```
-
-### Claims (Auto-Created by Trigger)
-```
-POST /api/claims/auto-create [INTERNAL]
-  { zone_id, trigger_type, trigger_value } → { claims_created: N }
-
-GET /api/claims/worker/:worker_id
-  → [{ claim_id, trigger_type, status, payout_amount, trust_score }]
-
-GET /api/claims/:claim_id
-  → { claim_id, status, payout_amount, trust_score, trigger_type }
-```
-
-### Admin
-```
-POST /api/admin/trigger-event [ADMIN ONLY]
-  { zone_id, city_id, trigger_type, trigger_value } → { event_id, claims_created }
-  // city_id lets the API resolve the best active zone in that city
-
-GET /api/admin/dashboard [ADMIN ONLY]
-  → { loss_ratio, total_premiums, total_payouts, claims_today, claims_by_status }
-
-GET /api/admin/claims [ADMIN ONLY]
-  → [{ claim_id, worker_id, status, payout_amount, zone_id }]
-```
-
----
-
-## 🧠 ML Model (Premium Calculation)
-
-### Training
-```bash
-cd services/ml/premium_service
-python train.py
-```
-
-Generates 1200 synthetic training rows with:
-- Features: zone_risk_score, rainfall history, temperature forecast, worker experience, past claims, fraud flags
-- Target: premium_rupees (₹60-280 range)
-- Model: RandomForestRegressor (200 trees, max_depth=8)
-- Output: premium_model.pkl + feature importances
-
-### Inference
-```bash
-cd services/ml/premium_service
-python app.py  # Starts Flask on :5001
-```
-
-POST `/predict-premium`:
-```json
-{
-  "zone_risk_score": 1.2,
-  "historical_rain_events": 8,
-  "historical_heat_events": 3,
-  "forecast_rain_prob": 0.7,
-  "forecast_max_temp_c": 41,
-  "worker_experience_weeks": 52,
-  "past_claim_count": 2,
-  "past_fraud_flags": 0,
-  "past_claim_ratio": 0.04
-}
-```
-Returns: `{ premium_rupees: 165, zone: "high_risk" }`
-
----
-
-## 🔐 Trust Score Algorithm
-
-Determines claim approval probability:
-
-```
-trust_score starts at 1.0
-
-GPS Distance Check:
-  if distance_from_trigger > 5 km: score -= 0.35
-
-Claim Timing Check:
-  if claim_filed < 5 min from trigger: score -= 0.10
-
-History Check:
-  if past_claims > 5: history_penalty = past_fraud_flags * 0.05
-  score -= history_penalty
-
-Result:
-  trust_score >= 0.85  → APPROVED (100% payout)
-  0.60 to 0.85         → PARTIAL (80% payout)
-  < 0.60               → FLAGGED (requires review)
-```
-
----
+- [database/migrations](database/migrations) for the schema migrations.
+- [database/seeds](database/seeds) for seed data.
+- [services/api/server.js](services/api/server.js) for the API entry point.
+- [services/api/routes/admin.js](services/api/routes/admin.js) for admin actions and manual trigger flows.
+- [services/api/routes/claims.js](services/api/routes/claims.js) for claim creation and retrieval.
+- [services/api/routes/policies.js](services/api/routes/policies.js) for policy purchase and activation.
+- [services/api/routes/premiums.js](services/api/routes/premiums.js) for premium calculation.
+- [services/api/routes/zones.js](services/api/routes/zones.js) for zone resolution and forecast lookups.
+- [services/api/routes/webhooks.js](services/api/routes/webhooks.js) for payment webhook handling.
+- [services/api/models/db.js](services/api/models/db.js) for database helpers and policy/claim queries.
+- [services/api/middleware/auth.js](services/api/middleware/auth.js) for auth and role checks.
+- [services/trigger-engine/scheduler.js](services/trigger-engine/scheduler.js) for the trigger loop.
+- [services/trigger-engine/evaluator.js](services/trigger-engine/evaluator.js) for trigger evaluation.
+- [services/trigger-engine/sources](services/trigger-engine/sources) for live weather and AQI adapters.
+- [apps/worker/src/pages](apps/worker/src/pages) for the worker screens.
+- [apps/admin/src/pages](apps/admin/src/pages) for the admin screens.
+- [apps/worker/src/services/api.js](apps/worker/src/services/api.js) and [apps/admin/src/services/api.js](apps/admin/src/services/api.js) for frontend API calls.
+- [apps/worker/src/utils/auth.js](apps/worker/src/utils/auth.js) and [apps/admin/src/utils/auth.js](apps/admin/src/utils/auth.js) for frontend auth helpers.
 
 ## 🚨 Demo Checklist (For Judges)
 

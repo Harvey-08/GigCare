@@ -22,17 +22,50 @@ async function initiateUpiPayout(claimId, workerId, amountRupees, upiVpa) {
   const amountPaise = Math.round(amountRupees * 100);
   const testVpa = upiVpa || 'success@razorpay';
 
+  async function updateClaimByKey(updatePayload) {
+    const keys = [claimId, String(claimId || '').trim()];
+
+    for (const key of keys) {
+      if (!key) continue;
+
+      const claimIdResult = await supabase
+        .from('claims')
+        .update(updatePayload)
+        .eq('claim_id', key)
+        .select('claim_id')
+        .maybeSingle();
+
+      if (!claimIdResult.error && claimIdResult.data) {
+        return claimIdResult;
+      }
+
+      const idResult = await supabase
+        .from('claims')
+        .update(updatePayload)
+        .eq('id', key)
+        .select('id')
+        .maybeSingle();
+
+      if (!idResult.error && idResult.data) {
+        return idResult;
+      }
+    }
+
+    return { data: null, error: new Error(`Unable to update claim ${claimId}`) };
+  }
+
   try {
     if (!razorpay) {
       const simulatedPayoutId = `sim_payout_${claimId}`;
-      await supabase
-        .from('claims')
-        .update({
-          razorpay_payout_id: simulatedPayoutId,
-          payout_initiated_at: new Date().toISOString(),
-          status: 'PAID',
-        })
-        .eq('claim_id', claimId);
+      const payoutUpdate = await updateClaimByKey({
+        razorpay_payout_id: simulatedPayoutId,
+        payout_initiated_at: new Date().toISOString(),
+        status: 'PAID',
+      });
+
+      if (payoutUpdate.error) {
+        throw payoutUpdate.error;
+      }
 
       return { success: true, payout_id: simulatedPayoutId, status: 'processed', simulated: true };
     }
@@ -61,23 +94,21 @@ async function initiateUpiPayout(claimId, workerId, amountRupees, upiVpa) {
       narration: `GigCare payout ${claimId}`,
     });
 
-    await supabase
-      .from('claims')
-      .update({
-        razorpay_payout_id: payout.id,
-        payout_initiated_at: new Date().toISOString(),
-      })
-      .eq('claim_id', claimId);
+    const payoutUpdate = await updateClaimByKey({
+      razorpay_payout_id: payout.id,
+      payout_initiated_at: new Date().toISOString(),
+    });
+
+    if (payoutUpdate.error) {
+      throw payoutUpdate.error;
+    }
 
     return { success: true, payout_id: payout.id, status: payout.status };
   } catch (error) {
-    await supabase
-      .from('claims')
-      .update({
-        status: 'FLAGGED',
-        fraud_reason: error.message,
-      })
-      .eq('claim_id', claimId);
+    await updateClaimByKey({
+      status: 'FLAGGED',
+      fraud_reason: error.message,
+    });
 
     throw error;
   }

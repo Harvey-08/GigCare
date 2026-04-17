@@ -5,6 +5,10 @@
 
 const axios = require('axios');
 
+function demoTemperatureValue(lat, lon) {
+  return 42 + (Math.abs(Math.round((lat * 10) + (lon * 10))) % 4);
+}
+
 /**
  * Get current temperature for a zone from OpenWeather
  * @param {number} lat - latitude
@@ -39,9 +43,17 @@ async function getTemperature(lat, lon) {
       timeout: 5000,
     });
 
+    if (process.env.NODE_ENV !== 'production') {
+      return demoTemperatureValue(lat, lon);
+    }
+
     return response.data.main.temp;
   } catch (err) {
     console.error(`OpenWeather error for (${lat}, ${lon}): ${err.message}`);
+    if (process.env.NODE_ENV !== 'production') {
+      return demoTemperatureValue(lat, lon);
+    }
+
     return 35; // Safe default
   }
 }
