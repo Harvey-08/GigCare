@@ -403,10 +403,12 @@ router.post('/trigger-demo-payout', authMiddleware('admin'), async (req, res) =>
 router.get('/dashboard', authMiddleware('admin'), async (req, res) => {
   try {
     // 1. Total Premiums
+    // Include both ACTIVE and PENDING_PAYMENT so newly purchased policies
+    // are visible in admin metrics even during activation race windows.
     const { data: premiumsData } = await supabase
       .from('policies')
       .select('premium_paid')
-      .eq('status', 'ACTIVE');
+      .in('status', ['ACTIVE', 'PENDING_PAYMENT']);
     const totalPremiums = (premiumsData || []).reduce((sum, p) => sum + p.premium_paid, 0);
 
     // 2. Claims data (DB + fallback compatibility)
@@ -717,7 +719,10 @@ router.get('/cities/metrics', authMiddleware('admin'), async (req, res) => {
 
     // Fetch Profiles to map workers to cities
     const { data: profiles } = await supabase.from('profiles').select('id, zone_id');
-    const { data: activePolicies } = await supabase.from('policies').select('user_id, premium_paid').eq('status', 'ACTIVE');
+    const { data: activePolicies } = await supabase
+      .from('policies')
+      .select('user_id, premium_paid')
+      .in('status', ['ACTIVE', 'PENDING_PAYMENT']);
 
     const profileMap = (profiles || []).reduce((acc, p) => {
       acc[p.id] = p.zone_id;
