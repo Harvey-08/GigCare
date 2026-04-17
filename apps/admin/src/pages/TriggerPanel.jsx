@@ -15,6 +15,7 @@ export default function TriggerPanel() {
   const [zones, setZones] = useState([]);
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState(null);
+  const [demoResult, setDemoResult] = useState(null);
   const [error, setError] = useState('');
 
   const CITIES = [
@@ -42,6 +43,7 @@ export default function TriggerPanel() {
     e.preventDefault();
     setError('');
     setResult(null);
+    setDemoResult(null);
     setLoading(true);
 
     try {
@@ -54,6 +56,24 @@ export default function TriggerPanel() {
       setResult(response.data.data);
     } catch (err) {
       setError(err.response?.data?.error || 'Authorization failed. Ensure you are an active Admin.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleGuaranteedDemo = async () => {
+    setError('');
+    setResult(null);
+    setDemoResult(null);
+    setLoading(true);
+
+    try {
+      const response = await apiClient.post('/admin/trigger-demo-payout', {
+        trigger_type: formData.trigger_type,
+      });
+      setDemoResult(response.data.data);
+    } catch (err) {
+      setError(err.response?.data?.error || 'Failed to execute guaranteed demo trigger.');
     } finally {
       setLoading(false);
     }
@@ -97,6 +117,21 @@ export default function TriggerPanel() {
           <div className="lg:col-span-3 space-y-6">
             <div className="bg-white rounded-[32px] border border-slate-200 p-8 shadow-sm">
               <form onSubmit={handleFire} className="space-y-8">
+                <div className="rounded-3xl border border-emerald-200 bg-emerald-50/80 p-5">
+                  <p className="text-[10px] font-black uppercase tracking-[0.35em] text-emerald-700">One-click demo</p>
+                  <p className="mt-2 text-xs font-medium text-emerald-900/80">
+                    Guaranteed route: targets an actual active policy zone, fires a trigger, and runs end-to-end claim + payout logic.
+                  </p>
+                  <button
+                    type="button"
+                    onClick={handleGuaranteedDemo}
+                    disabled={loading}
+                    className="mt-4 w-full rounded-2xl bg-emerald-600 px-4 py-3 text-sm font-black uppercase tracking-[0.2em] text-white transition-colors hover:bg-emerald-700 disabled:opacity-50"
+                  >
+                    {loading ? 'Running demo flow...' : 'Run Guaranteed Demo Payout'}
+                  </button>
+                </div>
+
                 <div className="rounded-3xl border border-indigo-100 bg-indigo-50/70 p-5">
                   <p className="text-[10px] font-black uppercase tracking-[0.35em] text-indigo-500">Target summary</p>
                   <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-4">
@@ -251,6 +286,20 @@ export default function TriggerPanel() {
                 <div className="bg-white/50 rounded-2xl p-4 space-y-2 text-[10px] font-bold uppercase tracking-widest text-emerald-800">
                   <div className="flex justify-between"><span>Impact Index</span><span>{result.claims_created} CLAIMS</span></div>
                   <div className="flex justify-between"><span>Authority</span><span>Verified</span></div>
+                </div>
+              </div>
+            ) : demoResult ? (
+              <div className="bg-emerald-50 border border-emerald-100 p-8 rounded-[32px] shadow-sm animate-in zoom-in duration-500">
+                <div className="w-12 h-12 bg-white rounded-2xl flex items-center justify-center text-2xl mb-6 shadow-sm">✅</div>
+                <h3 className="text-xl font-black text-emerald-900 mb-2 leading-none uppercase tracking-tight">Guaranteed Demo Complete</h3>
+                <p className="text-emerald-700 text-xs mb-6 font-medium">Targeted a live active policy and executed trigger evaluation + payout routing.</p>
+
+                <div className="bg-white/50 rounded-2xl p-4 space-y-2 text-[10px] font-bold uppercase tracking-widest text-emerald-800">
+                  <div className="flex justify-between"><span>Policy</span><span>{demoResult.target_policy_id}</span></div>
+                  <div className="flex justify-between"><span>Worker</span><span>{demoResult.target_worker_name}</span></div>
+                  <div className="flex justify-between"><span>Zone</span><span>{demoResult.zone_id}</span></div>
+                  <div className="flex justify-between"><span>Claims Created</span><span>{demoResult.claims_created}</span></div>
+                  <div className="flex justify-between"><span>Approved Or Paid</span><span>{demoResult.claims_approved_or_paid}</span></div>
                 </div>
               </div>
             ) : (

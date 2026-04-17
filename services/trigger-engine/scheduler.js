@@ -15,12 +15,12 @@ const { evaluateAllTriggers } = require('./evaluator');
 cron.schedule('*/30 * * * *', async () => {
   const timestamp = new Date().toISOString();
   console.log(`\n[${timestamp}] ⏰ Running trigger evaluation...`);
-  
+
   try {
     const events = await evaluateAllTriggers();
     console.log(`✅ Trigger check complete. ${events.length} events fired.`);
-    
-    events.forEach(ev => {
+
+    events.forEach((ev) => {
       console.log(`  • ${ev.trigger_type} in ${ev.zone_id}: value=${ev.trigger_value}`);
     });
   } catch (err) {
@@ -29,10 +29,14 @@ cron.schedule('*/30 * * * *', async () => {
   }
 });
 
+if (process.env.NODE_ENV !== 'production' && process.env.ENABLE_TRIGGER_CRON !== 'true') {
+  setInterval(() => {}, 60 * 60 * 1000);
+}
+
 // =====================================================
 // MANUAL TEST: Fire trigger immediately on startup (for demo)
 // =====================================================
-if (process.env.FIRE_ON_START === 'true') {
+if (process.env.FIRE_ON_START !== 'false') {
   setTimeout(async () => {
     console.log('\n🔥 FIRING TEST TRIGGER ON START...');
     try {
@@ -44,6 +48,5 @@ if (process.env.FIRE_ON_START === 'true') {
   }, 3000);
 }
 
-console.log('🚀 Trigger Engine started. Running every 30 minutes.');
-console.log('   Next check: in ~30 minutes');
-console.log('   To fire immediately for demo: set FIRE_ON_START=true in .env');
+console.log('🚀 Trigger Engine started.');
+console.log('   Running every 30 minutes.');

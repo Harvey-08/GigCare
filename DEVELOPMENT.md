@@ -1,5 +1,9 @@
 # GigCare Development Standards & Best Practices
 
+## Documentation Note (Current Runtime)
+
+This file focuses on process standards. For live environment setup and exact runtime endpoints, use [SETUP_AFTER_CLONE.md](SETUP_AFTER_CLONE.md).
+
 ## 📋 Table of Contents
 1. [Git Workflow](#git-workflow)
 2. [Code Quality](#code-quality)

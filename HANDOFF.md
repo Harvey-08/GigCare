@@ -1,5 +1,14 @@
 # GigCare Phase 2 - Development Handoff Document
 
+## Documentation Note (Current Runtime)
+
+This is a historical handoff snapshot. For current run commands and endpoints, use [SETUP_AFTER_CLONE.md](SETUP_AFTER_CLONE.md) and [README.md](README.md).
+
+Current default local endpoints:
+- Worker app: http://localhost:3010
+- Admin app: http://localhost:3013
+- API base: http://localhost:3011/api
+
 **Handed Off:** April 1, 2026, 05:45 UTC  
 **Deadline:** April 4, 2026, 2:00 PM  
 **Remaining Time:** ~66 hours

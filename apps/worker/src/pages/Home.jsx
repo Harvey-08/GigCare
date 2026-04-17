@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { apiClient } from '../services/api';
 
 function MetricCard({ label, value, note, accent }) {
@@ -81,6 +81,7 @@ function getDaysRemainingInclusive(weekEnd) {
 
 export default function Home({ profile, session, onLogout }) {
   const navigate = useNavigate();
+  const location = useLocation();
   const workerId = profile?.id || session?.user?.id;
   const [policies, setPolicies] = useState([]);
   const [claims, setClaims] = useState([]);
@@ -90,6 +91,41 @@ export default function Home({ profile, session, onLogout }) {
   const [zoneStatus, setZoneStatus] = useState(null);
   const [forecast, setForecast] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [purchaseNotice, setPurchaseNotice] = useState(() => {
+    if (location.state?.purchaseSuccess) {
+      return location.state.purchaseSuccess;
+    }
+
+    try {
+      const storedNotice = sessionStorage.getItem('gigcare_purchase_notice');
+      return storedNotice ? JSON.parse(storedNotice) : null;
+    } catch (error) {
+      return null;
+    }
+  });
+
+  useEffect(() => {
+    const sourceNotice = location.state?.purchaseSuccess;
+    if (sourceNotice) {
+      setPurchaseNotice(sourceNotice);
+    }
+
+    const storedNotice = sessionStorage.getItem('gigcare_purchase_notice');
+    if (!sourceNotice && storedNotice) {
+      try {
+        setPurchaseNotice(JSON.parse(storedNotice));
+      } catch (error) {
+        setPurchaseNotice(null);
+      }
+    }
+
+    const timer = window.setTimeout(() => {
+      sessionStorage.removeItem('gigcare_purchase_notice');
+      setPurchaseNotice(null);
+    }, 8000);
+
+    return () => window.clearTimeout(timer);
+  }, [location.state]);
 
   useEffect(() => {
     if (!workerId) {
@@ -194,6 +230,23 @@ export default function Home({ profile, session, onLogout }) {
       </div>
 
       <div className="mx-auto max-w-6xl space-y-8 px-6 py-8">
+        {purchaseNotice && (
+          <div className="rounded-[28px] border border-emerald-200 bg-emerald-50 p-5 shadow-sm">
+            <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+              <div>
+                <p className="text-[10px] font-black uppercase tracking-[0.3em] text-emerald-700">Premium payment confirmed</p>
+                <h2 className="mt-2 text-lg font-black text-emerald-950">Policy activated in demo mode</h2>
+                <p className="mt-2 text-sm text-emerald-900/80">
+                  Policy {purchaseNotice.policyId} is now active after the purchase-time premium payment with simulated reference {purchaseNotice.paymentId}.
+                </p>
+              </div>
+              <div className="rounded-2xl bg-white px-4 py-3 text-sm font-semibold text-emerald-900 shadow-sm">
+                Tier: {purchaseNotice.tier}
+              </div>
+            </div>
+          </div>
+        )}
+
         {zoneStatus?.locked && (
           <div className="rounded-[28px] border border-amber-200 bg-amber-50 p-5 text-amber-900 shadow-sm">
             <p className="text-[10px] font-black uppercase tracking-[0.3em] text-amber-700">Enrollment lock active</p>

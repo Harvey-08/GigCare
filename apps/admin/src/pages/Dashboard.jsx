@@ -132,6 +132,8 @@ export default function Dashboard({ profile, onLogout }) {
     .filter((zone) => zone.city_id === selectedCity?.city_id || zone.city === selectedCity?.city_name)
     .slice(0, 18);
   const claimsByStatus = dashboard?.claims_by_status || {};
+  const largestRing = fraudRings.reduce((largest, ring) => (ring.ring_size > (largest?.ring_size || 0) ? ring : largest), null);
+  const crossCityRings = fraudRings.filter((ring) => ring.is_cross_city).length;
 
   return (
     <div className="min-h-screen bg-[#F1F5F9] text-slate-900">
@@ -252,30 +254,89 @@ export default function Dashboard({ profile, onLogout }) {
                 <Donut claimsByStatus={claimsByStatus} />
 
                 <div className="rounded-[28px] border border-slate-200 bg-white p-6 shadow-sm">
-                  <p className="text-[10px] font-black uppercase tracking-[0.3em] text-slate-400">Fraud rings</p>
+                  <p className="text-[10px] font-black uppercase tracking-[0.3em] text-slate-400">Fraud posture</p>
                   <h3 className="mt-2 text-2xl font-black text-slate-900">{fraudRings.length} active rings</h3>
-                  <div className="mt-4 space-y-3">
-                    {fraudRings.length === 0 ? (
-                      <div className="rounded-2xl bg-emerald-50 px-4 py-3 text-sm font-medium text-emerald-800">No active rings detected.</div>
-                    ) : (
-                      fraudRings.slice(0, 4).map((ring, index) => (
-                        <div key={index} className="rounded-2xl border border-slate-100 bg-slate-50 px-4 py-3">
-                          <div className="flex items-center justify-between">
-                            <p className="text-xs font-black uppercase tracking-[0.25em] text-slate-500">Ring {index + 1}</p>
-                            <p className="text-xs font-black text-rose-600">{ring.ring_size} workers</p>
-                          </div>
-                          <p className="mt-2 text-sm font-medium text-slate-700">{ring.summary || (ring.is_cross_city ? 'Cross-city network' : 'Single-city cluster')}</p>
-                          <div className="mt-3 space-y-2 text-[11px] font-semibold text-slate-500">
-                            <p>Location: {ring.dominant_city_id || (ring.cities_involved || []).join(', ') || 'Unknown'}</p>
-                            <p>Signals: {(ring.suspicious_indicators || []).join(' • ') || 'No shared signals listed'}</p>
-                            <p>Workers: {(ring.worker_details || []).slice(0, 3).map((worker) => worker.worker_id || worker).join(', ')}{(ring.worker_details || []).length > 3 ? ' ...' : ''}</p>
-                          </div>
-                        </div>
-                      ))
-                    )}
+                  <div className="mt-4 grid grid-cols-3 gap-3 text-center">
+                    <div className="rounded-2xl bg-rose-50 px-3 py-4">
+                      <p className="text-lg font-black text-rose-700">{fraudRings.length}</p>
+                      <p className="mt-1 text-[10px] font-black uppercase tracking-[0.18em] text-rose-700">Total rings</p>
+                    </div>
+                    <div className="rounded-2xl bg-amber-50 px-3 py-4">
+                      <p className="text-lg font-black text-amber-700">{crossCityRings}</p>
+                      <p className="mt-1 text-[10px] font-black uppercase tracking-[0.18em] text-amber-700">Cross-city</p>
+                    </div>
+                    <div className="rounded-2xl bg-indigo-50 px-3 py-4">
+                      <p className="text-lg font-black text-indigo-700">{largestRing?.ring_size || 0}</p>
+                      <p className="mt-1 text-[10px] font-black uppercase tracking-[0.18em] text-indigo-700">Largest ring</p>
+                    </div>
                   </div>
+                  <p className="mt-4 text-xs font-medium text-slate-500">Detailed ring intelligence is available in the dedicated section below.</p>
                 </div>
               </div>
+            </div>
+
+            <div className="rounded-[36px] border border-slate-200 bg-white p-6 shadow-sm">
+              <div className="mb-6 flex flex-wrap items-center justify-between gap-4">
+                <div>
+                  <p className="text-[10px] font-black uppercase tracking-[0.35em] text-slate-400">Fraud intelligence</p>
+                  <h3 className="text-2xl font-black tracking-tight text-slate-900">Ring detection and suspicious linkage</h3>
+                </div>
+                <div className="rounded-full bg-rose-50 px-3 py-1 text-[10px] font-black uppercase tracking-[0.25em] text-rose-700">
+                  {fraudRings.length} live rings
+                </div>
+              </div>
+
+              {fraudRings.length === 0 ? (
+                <div className="rounded-2xl bg-emerald-50 px-4 py-4 text-sm font-medium text-emerald-800">
+                  No high-density fraud rings detected in current telemetry.
+                </div>
+              ) : (
+                <div className="overflow-hidden rounded-[24px] border border-slate-200">
+                  <div className="overflow-x-auto">
+                    <table className="min-w-[920px] w-full text-left text-sm">
+                      <thead className="bg-slate-50">
+                        <tr className="text-[10px] font-black uppercase tracking-[0.22em] text-slate-500">
+                          <th className="px-4 py-3">Ring</th>
+                          <th className="px-4 py-3">Workers</th>
+                          <th className="px-4 py-3">Scope</th>
+                          <th className="px-4 py-3">Top Signals</th>
+                          <th className="px-4 py-3">Sample Worker IDs</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-100 bg-white">
+                        {fraudRings.slice(0, 8).map((ring, index) => (
+                          <tr key={index} className="align-top hover:bg-slate-50">
+                            <td className="px-4 py-4">
+                              <p className="text-xs font-black uppercase tracking-[0.22em] text-slate-500">Ring {index + 1}</p>
+                              <p className="mt-1 text-xs font-medium text-slate-700 whitespace-normal">{ring.summary || 'Suspicious linked cluster'}</p>
+                            </td>
+                            <td className="px-4 py-4">
+                              <p className="inline-flex rounded-full bg-rose-50 px-3 py-1 text-xs font-black text-rose-700">
+                                {ring.ring_size} workers
+                              </p>
+                            </td>
+                            <td className="px-4 py-4 text-xs font-semibold text-slate-700 whitespace-normal">
+                              {ring.is_cross_city
+                                ? `Cross-city: ${(ring.cities_involved || []).join(', ') || 'Mixed'}`
+                                : (ring.dominant_city_id || 'Single city')}
+                            </td>
+                            <td className="px-4 py-4 text-xs font-medium text-slate-700 whitespace-normal">
+                              {(ring.suspicious_indicators || []).slice(0, 3).join(' • ') || 'Shared identifiers observed'}
+                            </td>
+                            <td className="px-4 py-4 text-xs font-medium text-slate-700 whitespace-normal break-all">
+                              {(ring.worker_details || [])
+                                .slice(0, 5)
+                                .map((worker) => worker.worker_id || worker)
+                                .join(', ')}
+                              {(ring.worker_details || []).length > 5 ? ' ...' : ''}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
             </div>
 
             <div className="grid grid-cols-1 gap-6 xl:grid-cols-3">
