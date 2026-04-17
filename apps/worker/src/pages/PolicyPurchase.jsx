@@ -95,11 +95,12 @@ export default function PolicyPurchase({ profile, onLogout }) {
       setLoading(true);
       setError('');
       const now = new Date();
-      const weekStart = new Date(now.getTime() - now.getDay() * 24 * 60 * 60 * 1000);
+      const coverageStart = new Date(now);
+      coverageStart.setHours(0, 0, 0, 0);
       
       const res = await apiClient.post('/premiums/calculate', {
         zone_id: selectedZone,
-        week_start: weekStart.toISOString().split('T')[0],
+        week_start: coverageStart.toISOString().split('T')[0],
         centroid_lat: currentCoords?.latitude,
         centroid_lon: currentCoords?.longitude,
       });

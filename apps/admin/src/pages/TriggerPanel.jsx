@@ -1,5 +1,5 @@
 // apps/admin/src/pages/TriggerPanel.jsx
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { apiClient } from '../services/api';
 
@@ -7,10 +7,12 @@ export default function TriggerPanel() {
   const navigate = useNavigate();
   const [formData, setFormData] = useState({
     city_id: 'BLR',
+    zone_id: '',
     trigger_type: 'HEAVY_RAIN',
     trigger_value: 60,
     reason: '',
   });
+  const [zones, setZones] = useState([]);
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState(null);
   const [error, setError] = useState('');
@@ -45,6 +47,7 @@ export default function TriggerPanel() {
     try {
       const payload = {
         ...formData,
+        zone_id: formData.zone_id || null,
         reason: formData.trigger_type === 'OTHER_REASON' ? formData.reason : '',
       };
       const response = await apiClient.post('/admin/trigger-event', payload);
@@ -57,6 +60,22 @@ export default function TriggerPanel() {
   };
 
   const currentTrigger = TRIGGERS.find((t) => t.type === formData.trigger_type);
+  const selectedCity = CITIES.find((city) => city.id === formData.city_id) || CITIES[0];
+  const cityZones = zones.filter((zone) => String(zone.zone_id || '').startsWith(`${formData.city_id}_`));
+  const selectedZone = cityZones.find((zone) => zone.zone_id === formData.zone_id) || null;
+
+  useEffect(() => {
+    const fetchZones = async () => {
+      try {
+        const response = await apiClient.get('/zones');
+        setZones(response.data?.data || []);
+      } catch (err) {
+        console.error('Failed to load zones:', err.message);
+      }
+    };
+
+    fetchZones();
+  }, []);
 
   return (
     <div className="min-h-screen bg-[#F1F5F9]">
@@ -78,6 +97,31 @@ export default function TriggerPanel() {
           <div className="lg:col-span-3 space-y-6">
             <div className="bg-white rounded-[32px] border border-slate-200 p-8 shadow-sm">
               <form onSubmit={handleFire} className="space-y-8">
+                <div className="rounded-3xl border border-indigo-100 bg-indigo-50/70 p-5">
+                  <p className="text-[10px] font-black uppercase tracking-[0.35em] text-indigo-500">Target summary</p>
+                  <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-4">
+                    <div>
+                      <p className="text-[10px] font-black uppercase tracking-[0.3em] text-slate-400">City</p>
+                      <p className="mt-1 text-lg font-black text-slate-900">{selectedCity?.name}</p>
+                    </div>
+                    <div>
+                      <p className="text-[10px] font-black uppercase tracking-[0.3em] text-slate-400">Sector Scope</p>
+                      <p className="mt-1 text-lg font-black text-slate-900">{selectedZone ? selectedZone.name : 'All sectors'}</p>
+                    </div>
+                    <div>
+                      <p className="text-[10px] font-black uppercase tracking-[0.3em] text-slate-400">Trigger</p>
+                      <p className="mt-1 text-lg font-black text-slate-900">{currentTrigger?.label}</p>
+                    </div>
+                    <div>
+                      <p className="text-[10px] font-black uppercase tracking-[0.3em] text-slate-400">Value</p>
+                      <p className="mt-1 text-lg font-black text-slate-900">{formData.trigger_value} {currentTrigger?.unit}</p>
+                    </div>
+                  </div>
+                  <p className="mt-3 text-xs font-medium text-slate-500">
+                    This trigger will run on {selectedZone ? `${selectedZone.name}` : `all sectors in ${selectedCity?.name}` }.
+                  </p>
+                </div>
+
                 <div>
                   <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-4">Select Target City</label>
                   <div className="grid grid-cols-1 gap-3">
@@ -85,7 +129,7 @@ export default function TriggerPanel() {
                       <button
                         key={city.id}
                         type="button"
-                        onClick={() => setFormData({ ...formData, city_id: city.id })}
+                        onClick={() => setFormData({ ...formData, city_id: city.id, zone_id: '' })}
                         className={`px-5 py-4 rounded-2xl border-2 text-left transition-all ${
                           formData.city_id === city.id 
                             ? 'border-indigo-600 bg-indigo-50/50 text-indigo-700' 
@@ -95,6 +139,41 @@ export default function TriggerPanel() {
                         <div className="flex items-center justify-between">
                           <span className="font-bold">{city.name}</span>
                           {formData.city_id === city.id && <span className="w-2 h-2 bg-indigo-600 rounded-full"></span>}
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-4">Select Target Sector (Optional)</label>
+                  <div className="grid grid-cols-1 gap-3">
+                    <button
+                      type="button"
+                      onClick={() => setFormData({ ...formData, zone_id: '' })}
+                      className={`px-5 py-4 rounded-2xl border-2 text-left transition-all ${
+                        !formData.zone_id
+                          ? 'border-indigo-600 bg-indigo-50/50 text-indigo-700'
+                          : 'border-slate-50 bg-slate-50/50 text-slate-500 hover:border-slate-200'
+                      }`}
+                    >
+                      <span className="font-bold">All sectors in {selectedCity?.name}</span>
+                    </button>
+
+                    {cityZones.map((zone) => (
+                      <button
+                        key={zone.zone_id}
+                        type="button"
+                        onClick={() => setFormData({ ...formData, zone_id: zone.zone_id })}
+                        className={`px-5 py-4 rounded-2xl border-2 text-left transition-all ${
+                          formData.zone_id === zone.zone_id
+                            ? 'border-indigo-600 bg-indigo-50/50 text-indigo-700'
+                            : 'border-slate-50 bg-slate-50/50 text-slate-500 hover:border-slate-200'
+                        }`}
+                      >
+                        <div className="flex items-center justify-between">
+                          <span className="font-bold">{zone.name}</span>
+                          <span className="text-[10px] font-black uppercase tracking-widest text-slate-400">{zone.zone_id}</span>
                         </div>
                       </button>
                     ))}

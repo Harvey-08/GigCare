@@ -1,5 +1,6 @@
 const express = require('express');
 const supabase = require('../models/supabase');
+const claimStore = require('../models/claimStore');
 const { authMiddleware } = require('../middleware/auth');
 const { requireConsent, getConsentText } = require('../middleware/consent');
 const { resolveUserLocation } = require('../utils/location-resolver');
@@ -14,6 +15,51 @@ function toNumber(value, fallback = 0) {
 
 function normalizeConsentType(consentType) {
   return String(consentType || '').trim().toUpperCase();
+}
+
+function dedupeClaimsById(claims = []) {
+  const map = new Map();
+  for (const claim of claims) {
+    const key = claim.claim_id || `${claim.trigger_event_id || ''}_${claim.created_at || ''}`;
+    if (!map.has(key)) {
+      map.set(key, claim);
+    }
+  }
+  return Array.from(map.values());
+}
+
+async function queryMonthlyClaims(userId, monthStartIso) {
+  const filters = [
+    { column: 'worker_id', value: userId },
+    { column: 'user_id', value: userId },
+  ];
+
+  let lastError = null;
+  for (const filter of filters) {
+    const result = await supabase
+      .from('claims')
+      .select('final_payout, disruption_hours, created_at, status')
+      .eq(filter.column, filter.value)
+      .gte('created_at', monthStartIso);
+
+    if (!result.error) {
+      return result.data || [];
+    }
+
+    // Missing column/table fallback.
+    if (result.error.code === '42703' || result.error.code === 'PGRST205') {
+      lastError = result.error;
+      continue;
+    }
+
+    throw result.error;
+  }
+
+  if (lastError && lastError.code === 'PGRST205') {
+    return [];
+  }
+
+  return [];
 }
 
 async function fetchWorkerOrThrow(workerId) {
@@ -79,21 +125,19 @@ router.get('/:id/income-recovery', authMiddleware('worker'), async (req, res) =>
     monthStart.setDate(1);
     monthStart.setHours(0, 0, 0, 0);
 
-    const { data: claims, error } = await supabase
-      .from('claims')
-      .select('final_payout, disruption_hours, created_at, status')
-      .eq('worker_id', id)
-      .eq('status', 'PAID')
-      .gte('created_at', monthStart.toISOString());
+    const allMonthlyClaims = await queryMonthlyClaims(id, monthStart.toISOString());
+    const fallbackMonthlyClaims = claimStore
+      .listFallbackClaimsForUser(id)
+      .filter((claim) => new Date(claim.created_at || 0) >= monthStart);
+    const combinedMonthlyClaims = dedupeClaimsById([...allMonthlyClaims, ...fallbackMonthlyClaims]);
 
-    if (error && error.code !== 'PGRST205') {
-      throw error;
-    }
+    const paidClaims = combinedMonthlyClaims.filter((claim) => claim.status === 'PAID');
+    const liabilityStatuses = new Set(['AUTO_CREATED', 'TRUST_EVALUATED', 'APPROVED', 'PARTIAL', 'FLAGGED', 'PAID']);
+    const claimedClaims = combinedMonthlyClaims.filter((claim) => liabilityStatuses.has(claim.status));
 
-    const safeClaims = error && error.code === 'PGRST205' ? [] : (claims || []);
-
-    const totalPaid = safeClaims.reduce((sum, claim) => sum + toNumber(claim.final_payout), 0);
-    const totalLost = safeClaims.reduce((sum, claim) => {
+    const totalPaid = paidClaims.reduce((sum, claim) => sum + toNumber(claim.final_payout), 0);
+    const totalClaimed = claimedClaims.reduce((sum, claim) => sum + toNumber(claim.final_payout), 0);
+    const totalLost = claimedClaims.reduce((sum, claim) => {
       const hourlyRate = toNumber(worker.avg_daily_income, 650) / 8;
       return sum + hourlyRate * toNumber(claim.disruption_hours, 0);
     }, 0);
@@ -103,10 +147,13 @@ router.get('/:id/income-recovery', authMiddleware('worker'), async (req, res) =>
     res.json({
       data: {
         worker_id: id,
+        total_claimed: Math.round(totalClaimed),
         total_paid: Math.round(totalPaid),
         total_lost: Math.round(totalLost),
         recovery_pct: Number(recoveryPct.toFixed(2)),
-        claims_count: safeClaims.length,
+        paid_count: paidClaims.length,
+        claimed_count: claimedClaims.length,
+        claims_count: paidClaims.length,
         month_start: monthStart.toISOString().split('T')[0],
       },
       meta: { timestamp: new Date().toISOString() },

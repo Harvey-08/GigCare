@@ -12,10 +12,25 @@ function MetricCard({ label, value, note, accent }) {
   );
 }
 
+function formatDateIN(value) {
+  if (!value) return '--';
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) return '--';
+
+  return new Intl.DateTimeFormat('en-GB', {
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+    timeZone: 'Asia/Kolkata',
+  }).format(parsed);
+}
+
 export default function Home({ profile, session, onLogout }) {
   const navigate = useNavigate();
+  const workerId = profile?.id || session?.user?.id;
   const [policies, setPolicies] = useState([]);
   const [claims, setClaims] = useState([]);
+  const [lastUpdatedAt, setLastUpdatedAt] = useState(null);
   const [incomeRecovery, setIncomeRecovery] = useState(null);
   const [eligibility, setEligibility] = useState(null);
   const [zoneStatus, setZoneStatus] = useState(null);
@@ -23,19 +38,40 @@ export default function Home({ profile, session, onLogout }) {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    if (session) {
-      fetchData();
+    if (!workerId) {
+      return undefined;
     }
-  }, [session]);
 
-  const fetchData = async () => {
+    fetchData({ workerId });
+
+    const interval = setInterval(() => {
+      fetchData({ workerId, background: true });
+    }, 15000);
+
+    const handleFocus = () => {
+      fetchData({ workerId, background: true });
+    };
+
+    window.addEventListener('focus', handleFocus);
+
+    return () => {
+      clearInterval(interval);
+      window.removeEventListener('focus', handleFocus);
+    };
+  }, [workerId]);
+
+  const fetchData = async ({ workerId: id, background = false } = {}) => {
     try {
-      setLoading(true);
-      const workerId = profile?.id || session?.user?.id;
+      if (!background) {
+        setLoading(true);
+      }
+      if (!id) {
+        return;
+      }
 
       const [policiesRes, claimsRes] = await Promise.all([
-        apiClient.get(`/policies/worker/${workerId}`),
-        apiClient.get(`/claims/worker/${workerId}`),
+        apiClient.get(`/policies/worker/${id}`),
+        apiClient.get(`/claims/worker/${id}`),
       ]);
 
       const policiesData = policiesRes.data.data || [];
@@ -43,14 +79,15 @@ export default function Home({ profile, session, onLogout }) {
       const zoneId = profile?.zone_id || activePolicy?.zone_id || policiesData[0]?.zone_id;
 
       const [recoveryRes, eligibilityRes, zoneStatusRes, forecastRes] = await Promise.all([
-        apiClient.get(`/workers/${workerId}/income-recovery`),
-        apiClient.get(`/workers/${workerId}/eligibility`),
+        apiClient.get(`/workers/${id}/income-recovery`),
+        apiClient.get(`/workers/${id}/eligibility`),
         zoneId ? apiClient.get(`/zones/${zoneId}/status`) : Promise.resolve({ data: { data: null } }),
         zoneId ? apiClient.get(`/zones/${zoneId}/forecast`) : Promise.resolve({ data: { data: null } }),
       ]);
 
       setPolicies(policiesData);
       setClaims(claimsRes.data.data || []);
+      setLastUpdatedAt(new Date());
       setIncomeRecovery(recoveryRes.data.data || null);
       setEligibility(eligibilityRes.data.data || null);
       setZoneStatus(zoneStatusRes.data.data || null);
@@ -58,7 +95,9 @@ export default function Home({ profile, session, onLogout }) {
     } catch (err) {
       console.error('Failed to fetch data:', err.message);
     } finally {
-      setLoading(false);
+      if (!background) {
+        setLoading(false);
+      }
     }
   };
 
@@ -132,7 +171,7 @@ export default function Home({ profile, session, onLogout }) {
                 </div>
                 <div>
                   <p className="text-[10px] font-black uppercase tracking-[0.3em] text-indigo-100/70">Valid until</p>
-                  <p className="mt-1 text-xl font-black">{new Date(activePolicy.week_end).toLocaleDateString()}</p>
+                  <p className="mt-1 text-xl font-black">{formatDateIN(activePolicy.week_end)}</p>
                 </div>
               </div>
             </div>
@@ -153,9 +192,9 @@ export default function Home({ profile, session, onLogout }) {
 
         <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
           <MetricCard
-            label="Recovered This Month"
-            value={`₹${incomeRecovery?.total_paid?.toLocaleString?.() || 0}`}
-            note={`${incomeRecovery?.claims_count || 0} paid claims this month`}
+            label="Claimed This Month"
+            value={`₹${incomeRecovery?.total_claimed?.toLocaleString?.() || 0}`}
+            note={`${incomeRecovery?.claimed_count || 0} claims submitted (${incomeRecovery?.paid_count || 0} paid)`}
             accent="text-emerald-600"
           />
           <MetricCard
@@ -185,12 +224,17 @@ export default function Home({ profile, session, onLogout }) {
                 <p className="text-[10px] font-black uppercase tracking-[0.35em] text-slate-400">Claims history</p>
                 <h2 className="text-2xl font-black tracking-tight text-slate-900">Recent claim activity</h2>
               </div>
-              <button
-                onClick={() => navigate('/buy-policy')}
-                className="rounded-xl bg-slate-900 px-4 py-2 text-[10px] font-black uppercase tracking-[0.25em] text-white transition-colors hover:bg-indigo-700"
-              >
-                Renew Now
-              </button>
+                <div className="text-right">
+                  <button
+                    onClick={() => navigate('/buy-policy')}
+                    className="rounded-xl bg-slate-900 px-4 py-2 text-[10px] font-black uppercase tracking-[0.25em] text-white transition-colors hover:bg-indigo-700"
+                  >
+                    Renew Now
+                  </button>
+                  <p className="mt-2 text-[10px] font-medium text-slate-400">
+                    Last updated: {lastUpdatedAt ? lastUpdatedAt.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'loading...'}
+                  </p>
+                </div>
             </div>
 
             {loading ? (
@@ -246,8 +290,8 @@ export default function Home({ profile, session, onLogout }) {
                   <p className="mt-2 text-2xl font-black">{zoneStatus?.expected_rain_mm || 0}mm</p>
                 </div>
                 <div className="rounded-2xl bg-white/10 p-4">
-                  <p className="text-[10px] font-black uppercase tracking-[0.3em] text-slate-400">Risk</p>
-                  <p className="mt-2 text-2xl font-black">{zoneStatus?.zone_risk_score?.toFixed?.(2) || '0.00'}</p>
+                  <p className="text-[10px] font-black uppercase tracking-[0.3em] text-slate-400">Coverage</p>
+                  <p className="mt-2 text-2xl font-black">{zoneStatus?.locked ? 'Paused' : 'Open'}</p>
                 </div>
               </div>
             </div>

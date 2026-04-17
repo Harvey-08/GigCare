@@ -67,6 +67,7 @@ router.post('/login', async (req, res) => {
 router.post('/trigger-event', authMiddleware('admin'), async (req, res) => {
   try {
     const { zone_id, city_id, trigger_type, trigger_value, reason } = req.body;
+    const isCityWideTrigger = !zone_id && !!city_id;
 
     const allowedTriggerTypes = ['HEAVY_RAIN', 'EXTREME_HEAT', 'POOR_AQI', 'CURFEW', 'APP_OUTAGE', 'OTHER_REASON'];
 
@@ -131,7 +132,7 @@ router.post('/trigger-event', authMiddleware('admin'), async (req, res) => {
     // Call auto-create endpoint internally
     try {
       const claimsRes = await axios.post(`${API_URL}/api/fraud/auto-create`, {
-        zone_id: targetZoneId,
+        zone_id: isCityWideTrigger ? null : targetZoneId,
         city_id: targetCityId,
         trigger_type: normalizedTriggerType,
         trigger_value,
@@ -148,6 +149,7 @@ router.post('/trigger-event', authMiddleware('admin'), async (req, res) => {
           ...event,
           city_id: targetCityId,
           zone_id: targetZoneId,
+          trigger_scope: isCityWideTrigger ? 'CITY' : 'ZONE',
           claims_created: claimsRes.data.data?.length || 0,
         },
         meta: { timestamp: new Date().toISOString() },
