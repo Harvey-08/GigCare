@@ -1,11 +1,7 @@
--- GigCare Initial Schema
--- PostgreSQL 15
--- This is the foundation. Run this FIRST.
+-- GigCare Consolidated Schema
+-- This file defines the full database structure for easy setup in Supabase.
 
--- =====================================================
--- ENUMS
--- =====================================================
-
+-- 1. ENUMS
 CREATE TYPE platform_enum AS ENUM ('ZOMATO', 'SWIGGY', 'ZEPTO', 'AMAZON', 'OTHER');
 CREATE TYPE bike_type_enum AS ENUM ('TWO_WHEELER', 'E_BIKE', 'BICYCLE');
 CREATE TYPE shift_enum AS ENUM ('MORNING', 'EVENING', 'SPLIT');
@@ -15,40 +11,85 @@ CREATE TYPE claim_status_enum AS ENUM ('AUTO_CREATED', 'TRUST_EVALUATED', 'APPRO
 CREATE TYPE policy_status_enum AS ENUM ('PENDING_PAYMENT', 'ACTIVE', 'EXPIRED', 'CANCELLED');
 CREATE TYPE zone_risk_enum AS ENUM ('LOW', 'MEDIUM', 'HIGH');
 
--- =====================================================
--- TABLES
--- =====================================================
+-- 2. CORE TABLES
 
+-- Cities 
+CREATE TABLE cities (
+  city_id VARCHAR(5) PRIMARY KEY,
+  city_name VARCHAR(50) NOT NULL,
+  state VARCHAR(50),
+  climate_zone VARCHAR(30),
+  lat_min FLOAT,
+  lat_max FLOAT,
+  lon_min FLOAT,
+  lon_max FLOAT,
+  centroid_lat FLOAT,
+  centroid_lon FLOAT,
+  primary_trigger VARCHAR(30),
+  active_workers_estimate INTEGER,
+  zomato_active BOOLEAN DEFAULT TRUE,
+  swiggy_active BOOLEAN DEFAULT TRUE,
+  created_at TIMESTAMP DEFAULT NOW()
+);
+
+-- Zones
 CREATE TABLE zones (
   zone_id VARCHAR(50) PRIMARY KEY,
   name VARCHAR(255) NOT NULL,
   city VARCHAR(100) NOT NULL,
+  city_id VARCHAR(5) REFERENCES cities(city_id),
   zone_risk_score FLOAT DEFAULT 1.0,
   zone_risk_level zone_risk_enum DEFAULT 'MEDIUM',
   flood_prone BOOLEAN DEFAULT FALSE,
   lat FLOAT,
   lon FLOAT,
+  grid_row INTEGER,
+  grid_col INTEGER,
+  centroid_lat DECIMAL(10,7),
+  centroid_lon DECIMAL(10,7),
+  climate_zone VARCHAR(30),
+  rain_risk_factor FLOAT DEFAULT 1.0,
+  heat_risk_factor FLOAT DEFAULT 1.0,
+  last_risk_computed TIMESTAMP,
+  historical_trigger_days_365 INTEGER DEFAULT 0,
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
-CREATE TABLE workers (
-  worker_id VARCHAR(100) PRIMARY KEY,
-  name VARCHAR(255) NOT NULL,
-  phone VARCHAR(20) NOT NULL UNIQUE,
-  platform platform_enum NOT NULL,
-  zone_id VARCHAR(50) NOT NULL REFERENCES zones(zone_id),
+-- Unified Profiles (Workers & Admins)
+CREATE TABLE profiles (
+  id VARCHAR(100) PRIMARY KEY DEFAULT gen_random_uuid(),
+  full_name VARCHAR(255) NOT NULL,
+  email VARCHAR(255) NOT NULL UNIQUE,
+  phone VARCHAR(20) UNIQUE,
+  role VARCHAR(50) DEFAULT 'worker',
+  platform platform_enum,
+  zone_id VARCHAR(50) REFERENCES zones(zone_id),
+  city_id VARCHAR(5) REFERENCES cities(city_id),
   bike_type bike_type_enum,
   avg_daily_income FLOAT DEFAULT 650.0,
   avg_daily_orders INT DEFAULT 25,
   shifts shift_enum[] DEFAULT ARRAY['EVENING'::shift_enum],
   trust_score FLOAT DEFAULT 1.0,
+  location_mode VARCHAR(20) DEFAULT 'SUPPORTED_CITY',
+  district VARCHAR(120),
+  state VARCHAR(120),
+  last_known_latitude FLOAT,
+  last_known_longitude FLOAT,
+  location_verified BOOLEAN DEFAULT FALSE,
+  is_active BOOLEAN DEFAULT TRUE,
+  engagement_days_this_fy INTEGER DEFAULT 0,
+  multi_platform BOOLEAN DEFAULT FALSE,
+  ss_code_eligible BOOLEAN DEFAULT FALSE,
+  eligibility_last_checked TIMESTAMP,
+  upi_vpa VARCHAR(120),
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
+-- Devices
 CREATE TABLE devices (
-  device_id VARCHAR(100) PRIMARY KEY,
-  worker_id VARCHAR(100) NOT NULL REFERENCES workers(worker_id),
+  device_id VARCHAR(100) PRIMARY KEY DEFAULT gen_random_uuid(),
+  profile_id VARCHAR(100) NOT NULL REFERENCES profiles(id),
   fingerprint_hash VARCHAR(255),
   rooted_flag BOOLEAN DEFAULT FALSE,
   shared_account_count INT DEFAULT 1,
@@ -56,9 +97,10 @@ CREATE TABLE devices (
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
+-- Premium Quotes
 CREATE TABLE premium_quotes (
-  quote_id VARCHAR(100) PRIMARY KEY,
-  worker_id VARCHAR(100) NOT NULL REFERENCES workers(worker_id),
+  quote_id VARCHAR(100) PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id VARCHAR(100) NOT NULL REFERENCES profiles(id),
   zone_id VARCHAR(50) NOT NULL REFERENCES zones(zone_id),
   week_start DATE NOT NULL,
   week_end DATE NOT NULL,
@@ -71,9 +113,11 @@ CREATE TABLE premium_quotes (
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
+-- Policies
 CREATE TABLE policies (
-  policy_id VARCHAR(100) PRIMARY KEY,
-  worker_id VARCHAR(100) NOT NULL REFERENCES workers(worker_id),
+  id VARCHAR(100) PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id VARCHAR(100) NOT NULL REFERENCES profiles(id),
+  worker_id VARCHAR(100) REFERENCES profiles(id), -- Alias for code compatibility
   quote_id VARCHAR(100) REFERENCES premium_quotes(quote_id),
   coverage_tier coverage_tier_enum NOT NULL,
   premium_paid INT NOT NULL,
@@ -87,15 +131,17 @@ CREATE TABLE policies (
   updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
+-- Trigger Events
 CREATE TABLE trigger_events (
-  event_id VARCHAR(100) PRIMARY KEY,
+  event_id VARCHAR(100) PRIMARY KEY DEFAULT gen_random_uuid(),
   zone_id VARCHAR(50) NOT NULL REFERENCES zones(zone_id),
+  city_id VARCHAR(5) REFERENCES cities(city_id),
   trigger_type trigger_type_enum NOT NULL,
   trigger_value FLOAT NOT NULL,
   severity_factor FLOAT DEFAULT 1.0,
   peak_multiplier FLOAT DEFAULT 1.0,
   order_drop_percentage FLOAT,
-  started_at TIMESTAMP NOT NULL,
+  started_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
   ended_at TIMESTAMP,
   claims_generated INT DEFAULT 0,
   payout_dispatched INT DEFAULT 0,
@@ -103,10 +149,13 @@ CREATE TABLE trigger_events (
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
+-- Claims
 CREATE TABLE claims (
-  claim_id VARCHAR(100) PRIMARY KEY,
-  policy_id VARCHAR(100) NOT NULL REFERENCES policies(policy_id),
-  worker_id VARCHAR(100) NOT NULL REFERENCES workers(worker_id),
+  claim_id VARCHAR(100) PRIMARY KEY DEFAULT gen_random_uuid(),
+  policy_id VARCHAR(100) NOT NULL REFERENCES policies(id),
+  user_id VARCHAR(100) NOT NULL REFERENCES profiles(id),
+  worker_id VARCHAR(100) REFERENCES profiles(id), -- Alias for code compatibility
+  city_id VARCHAR(5) REFERENCES cities(city_id),
   trigger_event_id VARCHAR(100) REFERENCES trigger_events(event_id),
   trigger_type trigger_type_enum NOT NULL,
   trigger_value FLOAT,
@@ -119,10 +168,13 @@ CREATE TABLE claims (
   status claim_status_enum DEFAULT 'AUTO_CREATED',
   fraud_reason VARCHAR(500),
   razorpay_payout_id VARCHAR(255),
+  payout_initiated_at TIMESTAMP,
+  paid_at TIMESTAMP,
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
+-- Location Signals
 CREATE TABLE location_signals (
   signal_id VARCHAR(100) PRIMARY KEY,
   claim_id VARCHAR(100) NOT NULL REFERENCES claims(claim_id),
@@ -137,53 +189,30 @@ CREATE TABLE location_signals (
   timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
--- =====================================================
--- ADMIN TABLES
--- =====================================================
 
-CREATE TABLE admins (
-  admin_id VARCHAR(100) PRIMARY KEY,
-  email VARCHAR(255) NOT NULL UNIQUE,
-  name VARCHAR(255) NOT NULL,
-  phone VARCHAR(20) NOT NULL UNIQUE,
-  role VARCHAR(50) DEFAULT 'ADMIN',
-  permissions TEXT[] DEFAULT ARRAY['read', 'write', 'admin'],
-  is_active BOOLEAN DEFAULT TRUE,
-  last_login TIMESTAMP,
-  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+-- Consent Records 
+CREATE TABLE consent_records (
+  consent_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  worker_id VARCHAR(100) REFERENCES profiles(id),
+  consent_type VARCHAR(30) NOT NULL,
+  consent_granted BOOLEAN NOT NULL,
+  consent_text TEXT NOT NULL,
+  ip_address INET,
+  granted_at TIMESTAMP DEFAULT NOW(),
+  revoked_at TIMESTAMP,
+  UNIQUE(worker_id, consent_type)
 );
--- =====================================================
--- INDEXES
--- =====================================================
--- INDEXES
--- =====================================================
 
-CREATE INDEX idx_workers_zone_id ON workers(zone_id);
-CREATE INDEX idx_workers_phone ON workers(phone);
-CREATE INDEX idx_workers_trust_score ON workers(trust_score);
+-- 3. INDEXES
+CREATE INDEX idx_profiles_zone_id ON profiles(zone_id);
+CREATE INDEX idx_profiles_email ON profiles(email);
+CREATE INDEX idx_profiles_phone ON profiles(phone);
 
-CREATE INDEX idx_policies_worker_id ON policies(worker_id);
+CREATE INDEX idx_policies_user_id ON policies(user_id);
 CREATE INDEX idx_policies_status ON policies(status);
-CREATE INDEX idx_policies_week_start ON policies(week_start);
 
-CREATE INDEX idx_claims_worker_id ON claims(worker_id);
-CREATE INDEX idx_claims_policy_id ON claims(policy_id);
+CREATE INDEX idx_claims_user_id ON claims(user_id);
 CREATE INDEX idx_claims_status ON claims(status);
-CREATE INDEX idx_claims_trust_score ON claims(trust_score);
-CREATE INDEX idx_claims_trigger_type ON claims(trigger_type);
-CREATE INDEX idx_claims_created_at ON claims(created_at);
 
 CREATE INDEX idx_trigger_events_zone_id ON trigger_events(zone_id);
-CREATE INDEX idx_trigger_events_trigger_type ON trigger_events(trigger_type);
-CREATE INDEX idx_trigger_events_created_at ON trigger_events(created_at);
-
-CREATE INDEX idx_location_signals_claim_id ON location_signals(claim_id);
-CREATE INDEX idx_location_signals_device_id ON location_signals(device_id);
-
-CREATE INDEX idx_premium_quotes_worker_id ON premium_quotes(worker_id);
-CREATE INDEX idx_premium_quotes_zone_id ON premium_quotes(zone_id);
-
--- =====================================================
--- DONE
--- =====================================================
+CREATE INDEX idx_zones_city_id ON zones(city_id);
