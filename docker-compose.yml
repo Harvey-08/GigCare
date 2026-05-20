@@ -31,11 +31,14 @@ services:
       PORT: 3001
       CORS_ORIGIN: http://localhost:3010
       USE_MOCK_DATA: ${USE_MOCK_DATA:-false}
-    # volumes:
-    #   - ./services/api:/app
-    #   - /app/node_modules
+    command: npm start
+    volumes:
+      - ./services/api:/app
+      - /app/node_modules
     networks:
-      - gigcare-net
+      gigcare-net:
+        aliases:
+          - api
 
   # ML Premium Pricing Service
   ml-premium:
@@ -109,6 +112,9 @@ services:
       - REACT_APP_API_URL=http://localhost:3011/api
     depends_on:
       - api
+    volumes:
+      - ./apps/worker:/app
+      - /app/node_modules
     networks:
       - gigcare-net
 
@@ -125,6 +131,9 @@ services:
       - REACT_APP_API_URL=http://localhost:3011/api
     depends_on:
       - api
+    volumes:
+      - ./apps/admin:/app
+      - /app/node_modules
     networks:
       - gigcare-net
 

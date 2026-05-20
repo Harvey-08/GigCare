@@ -1,38 +1,38 @@
 #!/bin/bash
 
-echo "🔍 Running pre-commit checks..."
+echo "[CHECK] Running pre-commit checks..."
 
 # Check if we're in the API directory
 if [ -f "services/api/package.json" ]; then
-    echo "📦 Checking API service..."
+    echo "[INFO] Checking API service..."
 
     cd services/api
 
     # Run linting
     if npm run lint > /dev/null 2>&1; then
-        echo "✅ Linting passed"
+        echo "[PASS] Linting passed"
     else
-        echo "❌ Linting failed. Run 'npm run lint:fix' to fix issues."
+        echo "[FAIL] Linting failed. Run 'npm run lint:fix' to fix issues."
         exit 1
     fi
 
     # Run formatting check
     if npm run format:check > /dev/null 2>&1; then
-        echo "✅ Formatting check passed"
+        echo "[PASS] Formatting check passed"
     else
-        echo "❌ Formatting check failed. Run 'npm run format' to fix."
+        echo "[FAIL] Formatting check failed. Run 'npm run format' to fix."
         exit 1
     fi
 
     # Run tests
     if npm test > /dev/null 2>&1; then
-        echo "✅ Tests passed"
+        echo "[PASS] Tests passed"
     else
-        echo "❌ Tests failed. Fix tests before committing."
+        echo "[FAIL] Tests failed. Fix tests before committing."
         exit 1
     fi
 
     cd ..
 fi
 
-echo "🎉 All pre-commit checks passed!"
+echo "[SUCCESS] All pre-commit checks passed!"
