@@ -1,4 +1,4 @@
-// Central city configuration for Phase 3 location resolution.
+// Central city configuration for location resolution.
 
 const CITY_CONFIGS = [
   {

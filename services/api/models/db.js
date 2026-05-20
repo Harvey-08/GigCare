@@ -1,9 +1,6 @@
-// services/api/models/db.js
 const supabase = require('./supabase');
 
-// =====================================================
 // QUERY HELPER (Compatibility Layer)
-// =====================================================
 async function query(table, action, data = {}) {
   // This is a simplified helper to mimic the old query style if needed
   // But it's better to use Supabase client directly
@@ -11,9 +8,7 @@ async function query(table, action, data = {}) {
   return null; 
 }
 
-// =====================================================
 // REFACTORED EXPORTED QUERIES
-// =====================================================
 
 // PROFILES (Replaces Workers/Admins)
 const getProfile = async (id) => {
@@ -199,10 +194,10 @@ const getClaimsForUser = async (user_id) => {
 };
 
 const getActivePoliciesInZone = async (zone_id, current_date) => {
-  // Complex join: policies for workers in a specific zone
+  // Specify the explicit relationship to avoid ambiguity
   const { data, error } = await supabase
     .from('policies')
-    .select('*, profiles!inner(zone_id)')
+    .select('*, profiles!policies_user_id_fkey!inner(*)')
     .eq('status', 'ACTIVE')
     .lte('week_start', current_date)
     .gte('week_end', current_date)
@@ -228,7 +223,7 @@ const getActivePoliciesInCity = async (cityName, current_date) => {
     // 2. Fetch all active policies where profiles match those zone_ids
     const { data, error } = await supabase
       .from('policies')
-      .select('*, profiles!inner(zone_id)')
+      .select('*, profiles!policies_user_id_fkey!inner(*)')
       .eq('status', 'ACTIVE')
       .lte('week_start', current_date)
       .gte('week_end', current_date)

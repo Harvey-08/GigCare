@@ -4,13 +4,13 @@ const supabase = require('../models/supabase');
 function getRazorpayClient() {
   const keyId = process.env.RAZORPAY_KEY_ID;
   const keySecret = process.env.RAZORPAY_KEY_SECRET;
-  const mode = process.env.RAZORPAY_MODE || 'sandbox'; // Phase 3: production mode support
+  const mode = process.env.RAZORPAY_MODE || 'sandbox'; 
 
   if (!keyId || !keySecret || keyId === 'none' || keySecret === 'none') {
     return null;
   }
 
-  console.log(`🔄 Razorpay initialized in ${mode} mode`);
+  console.log(`Razorpay initialized in ${mode} mode`);
   return new Razorpay({
     key_id: keyId,
     key_secret: keySecret,

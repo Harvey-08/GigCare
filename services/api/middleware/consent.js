@@ -27,7 +27,6 @@ function requireConsent(consentType) {
         .maybeSingle();
 
       if (error) {
-        // HACK: For the hackathon demo, if the compliance table is missing, we auto-grant.
         if (error.code === 'PGRST205' || error.message?.includes('not find the table')) {
           console.warn(`[DEMO] Missing consent_records table. Auto-granting ${consentType}.`);
           return next();

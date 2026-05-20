@@ -6,7 +6,7 @@ const {
 } = require('./geogrid');
 
 const NOMINATIM_HEADERS = {
-  'User-Agent': 'GigCare/1.0 (Phase 3 location resolver)',
+  'User-Agent': 'GigCare/1.0 (location resolver)',
   Accept: 'application/json',
 };
 

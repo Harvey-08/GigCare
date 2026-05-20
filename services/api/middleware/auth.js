@@ -1,4 +1,3 @@
-// services/api/middleware/auth.js
 // JWT middleware for custom email OTP auth
 
 const jwt = require('jsonwebtoken');
@@ -88,9 +87,7 @@ const authMiddleware = (requiredRole = null) => async (req, res, next) => {
   }
 };
 
-// =====================================================
 // INTERNAL SERVICE AUTH (for trigger engine)
-// =====================================================
 const internalServiceAuth = (req, res, next) => {
   const key = req.headers['x-internal-service-key'];
   if (key !== process.env.INTERNAL_SERVICE_KEY) {

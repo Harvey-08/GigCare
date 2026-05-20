@@ -1,6 +1,3 @@
-// services/api/server.js
-// Express server setup - Person A
-
 const express = require('express');
 const cors = require('cors');
 require('dotenv').config();
@@ -8,9 +5,7 @@ require('dotenv').config();
 const app = express();
 const { seedAllCityZones } = require('./startup/seed-zones');
 
-// =====================================================
 // MIDDLEWARE
-// =====================================================
 const allowedOrigins = [
   'http://localhost:3010',
   'http://localhost:3013',
@@ -41,9 +36,7 @@ app.use((req, res, next) => {
   next();
 });
 
-// =====================================================
 // ROUTES
-// =====================================================
 app.use('/api/auth', require('./routes/auth'));
 app.use('/api/zones', require('./routes/zones'));
 app.use('/api/premiums', require('./routes/premiums'));
@@ -54,16 +47,12 @@ app.use('/api/workers', require('./routes/workers'));
 app.use('/api/admin', require('./routes/admin'));
 app.use('/api/webhooks', require('./routes/webhooks'));
 
-// =====================================================
 // HEALTH CHECK
-// =====================================================
 app.get('/health', (req, res) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString() });
 });
 
-// =====================================================
 // ERROR HANDLING
-// =====================================================
 app.use((err, req, res, next) => {
   console.error('Error:', err.message);
   res.status(err.status || 500).json({
@@ -73,15 +62,13 @@ app.use((err, req, res, next) => {
   });
 });
 
-// =====================================================
 // START SERVER
-// =====================================================
 const PORT = process.env.PORT || 3001;
 
 if (require.main === module) {
   app.listen(PORT, () => {
-    console.log(`🚀 GigCare API + Supabase running on port ${PORT}`);
-    console.log(`📊 Supabase Project: ${process.env.SUPABASE_URL}`);
+    console.log(`GigCare API + Supabase running on port ${PORT}`);
+    console.log(`Supabase Project: ${process.env.SUPABASE_URL}`);
 
     if (process.env.AUTO_SEED_ZONES === 'true') {
       seedAllCityZones().catch((error) => {
