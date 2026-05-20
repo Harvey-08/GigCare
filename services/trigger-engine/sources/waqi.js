@@ -1,8 +1,4 @@
-// services/trigger-engine/sources/waqi.js
 // World Air Quality Index integration
-// Free tier: requires WAQI_TOKEN in .env
-// Phase 2: returns mock data if USE_MOCK_DATA=true
-
 const axios = require('axios');
 
 function demoAqiValue(lat, lon) {
@@ -16,7 +12,7 @@ function demoAqiValue(lat, lon) {
  * @returns {Promise<number>} - AQI value (0-500+)
  */
 async function getAQI(lat, lon) {
-  // Mock mode for Phase 2
+  // Mock mode
   if (process.env.USE_MOCK_DATA === 'true') {
     // Randomly return poor AQI 15% of the time
     if (Math.random() > 0.85) {
@@ -26,7 +22,7 @@ async function getAQI(lat, lon) {
   }
 
   try {
-    // Real API call for Phase 3
+    // Real API call
     const token = process.env.WAQI_TOKEN;
     if (!token) {
       console.warn('WAQI_TOKEN not set, using safe default');

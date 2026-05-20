@@ -1,4 +1,3 @@
-// services/trigger-engine/sources/imd.js
 // India Meteorological Department (IMD) API integration for rainfall & weather in India
 // IMD provides free public weather data for major Indian cities
 

@@ -1,4 +1,3 @@
-// services/trigger-engine/sources/cpcb.js
 // Central Pollution Control Board (CPCB) AQI data integration
 // CPCB provides Air Quality Index data for Indian cities
 

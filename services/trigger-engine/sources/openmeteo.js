@@ -1,8 +1,4 @@
-// services/trigger-engine/sources/openmeteo.js
 // Open-Meteo API integration for rainfall data
-// Free tier: no API key required
-// Phase 2: returns mock data if USE_MOCK_DATA=true
-
 const axios = require('axios');
 
 function demoRainfallValue(lat, lon) {
@@ -16,7 +12,7 @@ function demoRainfallValue(lat, lon) {
  * @returns {Promise<number>} - rainfall in mm
  */
 async function getRainfall(lat, lon) {
-  // Mock mode for Phase 2
+  // Mock mode
   if (process.env.USE_MOCK_DATA === 'true') {
     // Randomly return high rainfall 30% of the time
     if (Math.random() > 0.7) {
@@ -26,7 +22,7 @@ async function getRainfall(lat, lon) {
   }
 
   try {
-    // Real API call for Phase 3
+    // Real API call
     const response = await axios.get('https://api.open-meteo.com/v1/forecast', {
       params: {
         latitude: lat,

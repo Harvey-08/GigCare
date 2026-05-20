@@ -10,10 +10,10 @@ async function dispatchClaims(event) {
       timeout: 5000,
     });
 
-    console.log(`      ✅ Created ${response.data.data?.length || 0} fraud-scored claims`);
+    console.log(`Created ${response.data.data?.length || 0} fraud-scored claims`);
     return response.data;
   } catch (error) {
-    console.error(`      ❌ Failed to dispatch claims: ${error.message}`);
+    console.error(`Failed to dispatch claims: ${error.message}`);
     throw error;
   }
 }

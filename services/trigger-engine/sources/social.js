@@ -1,4 +1,3 @@
-// services/trigger-engine/sources/social.js
 // Simulated social disruption feed for curfew/zone closure/app outage events.
 
 function getSocialDisruption(cityId) {

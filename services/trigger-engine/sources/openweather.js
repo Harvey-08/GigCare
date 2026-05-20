@@ -1,8 +1,4 @@
-// services/trigger-engine/sources/openweather.js
 // OpenWeather API integration for temperature data
-// Free tier: requires OPENWEATHER_API_KEY in .env
-// Phase 2: returns mock data if USE_MOCK_DATA=true
-
 const axios = require('axios');
 
 function demoTemperatureValue(lat, lon) {
@@ -16,7 +12,6 @@ function demoTemperatureValue(lat, lon) {
  * @returns {Promise<number>} - current temperature in Celsius
  */
 async function getTemperature(lat, lon) {
-  // Mock mode for Phase 2
   if (process.env.USE_MOCK_DATA === 'true') {
     // Randomly return extreme heat 20% of the time
     if (Math.random() > 0.8) {
@@ -26,7 +21,7 @@ async function getTemperature(lat, lon) {
   }
 
   try {
-    // Real API call for Phase 3
+    // Real API call
     const apiKey = process.env.OPENWEATHER_API_KEY;
     if (!apiKey) {
       console.warn('OPENWEATHER_API_KEY not set, using safe default');

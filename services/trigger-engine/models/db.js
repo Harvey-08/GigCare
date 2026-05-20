@@ -1,9 +1,6 @@
-// services/trigger-engine/models/db.js
 const supabase = require('./supabase');
 
-// =====================================================
 // REFACTORED EXPORTED QUERIES
-// =====================================================
 
 const getZones = async () => {
   return await supabase.from('zones').select('*').order('zone_risk_score', { ascending: true });
