@@ -1,7 +1,7 @@
 {
   "name": "gigcare-admin-app",
   "version": "1.0.0",
-  "description": "Admin dashboard for GigCare Phase 2",
+  "description": "Admin dashboard for GigCare",
   "scripts": {
     "start": "react-scripts start",
     "build": "react-scripts build",
