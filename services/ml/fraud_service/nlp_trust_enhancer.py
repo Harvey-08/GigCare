@@ -1,4 +1,3 @@
-# services/ml/fraud_service/nlp_trust_enhancer.py
 # NLP-based trust score enhancement
 # Analyzes worker profile signals, claim history patterns, and linguistic patterns
 # to provide enhanced trust signal grounded in behavioral linguistics

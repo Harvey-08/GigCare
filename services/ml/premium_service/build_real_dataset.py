@@ -104,7 +104,7 @@ def build_label(climate_zone, weather, month):
 
 
 def main():
-    print('🚀 Building premium training dataset from real weather data...')
+    print('Building premium training dataset from real weather data...')
     connection = psycopg2.connect(DB_URL)
     cursor = connection.cursor()
     ensure_table(cursor)
@@ -183,13 +183,13 @@ def main():
                 connection.commit()
                 inserted_rows += 1
             except Exception as error:
-                print(f'  ⚠️  {city_id} {week_start} skipped: {error}')
+                print(f'  {city_id} {week_start} skipped: {error}')
 
             time.sleep(0.12)
 
     cursor.close()
     connection.close()
-    print(f'✅ Dataset build complete. Rows processed: {inserted_rows}')
+    print(f'Dataset build complete. Rows processed: {inserted_rows}')
 
 
 if __name__ == '__main__':

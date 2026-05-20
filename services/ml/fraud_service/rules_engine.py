@@ -1,6 +1,5 @@
 import math
 
-
 def haversine_km(lat1, lon1, lat2, lon2):
     radius_km = 6371
     delta_lat = math.radians(lat2 - lat1)

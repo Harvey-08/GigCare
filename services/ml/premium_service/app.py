@@ -30,9 +30,9 @@ def load_model():
                 'trained_at': saved.get('trained_at'),
                 'trained_on_rows': saved.get('trained_on_rows'),
             }
-        print('✅ Premium model loaded')
+        print('Premium model loaded')
     else:
-        print('⚠️  Model not found, please run train.py first')
+        print('Model not found, please run train.py first')
 
 
 def fetch_forecast_features(lat, lon):
@@ -195,5 +195,5 @@ def health():
 
 
 if __name__ == '__main__':
-    print('🚀 Premium Service starting on port 5001...')
+    print('Premium Service starting on port 5001...')
     app.run(host='0.0.0.0', port=5001, debug=False)

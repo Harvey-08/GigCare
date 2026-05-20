@@ -1,7 +1,5 @@
-# services/ml/premium_service/train.py
 import os
 import pickle
-
 import pandas as pd
 import psycopg2
 from sklearn.ensemble import GradientBoostingRegressor
@@ -26,7 +24,7 @@ FEATURES = [
 
 
 def main():
-    print('🚀 Training premium pricing model on real weather data...')
+    print('Training premium pricing model on real weather data...')
     connection = psycopg2.connect(DB_URL)
 
     df = pd.read_sql(
@@ -93,7 +91,7 @@ def main():
             handle,
         )
 
-    print('💾 Model saved to premium_model.pkl')
+    print('Model saved to premium_model.pkl')
     connection.close()
 
 
