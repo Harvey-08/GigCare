@@ -206,22 +206,40 @@ export default function Home({ profile, session, onLogout }) {
 
   return (
     <div className="min-h-screen bg-[#F8FAFC] text-slate-900">
-      <div className="sticky top-0 z-10 border-b border-white/60 bg-white/90 backdrop-blur-xl shadow-sm">
+      <div className="border-b border-slate-100 bg-white shadow-sm">
         <div className="mx-auto flex max-w-6xl items-center justify-between px-6 py-4">
-          <div>
-            <h1 className="text-xl font-black tracking-tight text-indigo-700">GIGCARE</h1>
-            <p className="text-sm font-medium text-slate-500">{profile?.full_name || session?.user?.email}</p>
+          {/* Left brand side */}
+          <div className="flex items-center gap-3.5">
+            <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-indigo-50 text-lg font-black text-indigo-700 shadow-sm border border-indigo-100/50">G</div>
+            <div>
+              <h1 className="text-xl font-black tracking-tight text-indigo-700 leading-none">GigCare</h1>
+              <p className="text-sm font-medium text-slate-500 mt-1.5">Member Portal</p>
+            </div>
           </div>
-          <div className="flex items-center gap-4">
+
+          {/* Right actions side */}
+          <div className="flex items-center gap-3">
             <button
               onClick={() => navigate('/policies')}
-              className="rounded-xl border border-slate-200 bg-white px-4 py-2 text-xs font-black uppercase tracking-[0.2em] text-slate-600 transition-colors hover:border-indigo-200 hover:text-indigo-700"
+              className="h-9 rounded-xl border border-indigo-150 bg-indigo-50/60 px-4 text-xs font-black uppercase tracking-[0.2em] text-indigo-700 transition-all hover:bg-indigo-600 hover:text-white hover:border-indigo-600 shadow-sm flex items-center justify-center hover:scale-[1.02] active:scale-[0.98]"
             >
               Policies
             </button>
+
+            {/* Premium Member Avatar Pill */}
+            <div className="hidden sm:flex items-center gap-3 bg-slate-50 border border-slate-100 rounded-xl px-3 h-9 shadow-inner">
+              <div className="flex h-6 w-6 items-center justify-center rounded-md bg-indigo-600 text-[10px] font-black text-white">
+                {(profile?.full_name || 'M')[0].toUpperCase()}
+              </div>
+              <div className="text-left">
+                <p className="text-xs font-black text-slate-800 leading-none">{profile?.full_name || 'Active Member'}</p>
+                <p className="text-[8px] font-black uppercase tracking-[0.1em] text-indigo-600 mt-0.5">Member</p>
+              </div>
+            </div>
+
             <button
               onClick={onLogout}
-              className="rounded-xl bg-slate-900 px-4 py-2 text-xs font-black uppercase tracking-[0.2em] text-white transition-colors hover:bg-rose-600"
+              className="h-9 rounded-xl border border-slate-200 bg-slate-900 text-white px-4 text-xs font-black uppercase tracking-[0.2em] transition-all hover:bg-rose-600 hover:border-rose-600 shadow-sm flex items-center justify-center hover:scale-[1.02] active:scale-[0.98]"
             >
               Sign Out
             </button>
@@ -334,17 +352,17 @@ export default function Home({ profile, session, onLogout }) {
                 <p className="text-[10px] font-black uppercase tracking-[0.35em] text-slate-400">Claims history</p>
                 <h2 className="text-2xl font-black tracking-tight text-slate-900">Recent claim activity</h2>
               </div>
-                <div className="text-right">
-                  <button
-                    onClick={() => navigate('/buy-policy')}
-                    className="rounded-xl bg-slate-900 px-4 py-2 text-[10px] font-black uppercase tracking-[0.25em] text-white transition-colors hover:bg-indigo-700"
-                  >
-                    Renew Now
-                  </button>
-                  <p className="mt-2 text-[10px] font-medium text-slate-400">
-                    Last updated: {lastUpdatedAt ? lastUpdatedAt.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'loading...'}
-                  </p>
-                </div>
+              <div className="text-right">
+                <button
+                  onClick={() => navigate('/buy-policy')}
+                  className="rounded-xl bg-slate-900 px-4 py-2 text-[10px] font-black uppercase tracking-[0.25em] text-white transition-colors hover:bg-indigo-700"
+                >
+                  Renew Now
+                </button>
+                <p className="mt-2 text-[10px] font-medium text-slate-400">
+                  Last updated: {lastUpdatedAt ? lastUpdatedAt.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'loading...'}
+                </p>
+              </div>
             </div>
 
             {loading ? (

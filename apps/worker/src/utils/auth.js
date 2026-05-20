@@ -1,4 +1,3 @@
-// apps/worker/src/utils/auth.js
 const TOKEN_KEY = 'gigcare_token';
 
 export function setToken(token) {

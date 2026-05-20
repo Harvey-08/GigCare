@@ -1,4 +1,3 @@
-// apps/worker/src/pages/Splash.jsx
 import React from 'react';
 import { useNavigate } from 'react-router-dom';
 

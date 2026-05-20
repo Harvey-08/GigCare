@@ -1,13 +1,25 @@
-// apps/worker/src/services/api.js
 import axios from 'axios';
 import { getToken, clearToken } from '../utils/auth';
 
-const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:3011/api';
+const getBaseUrl = () => {
+  if (process.env.REACT_APP_API_URL) return process.env.REACT_APP_API_URL;
+  
+  // If the browser is running the app on 3010, you're likely in local-dev mode
+  if (window.location.port === '3010') {
+    return 'http://localhost:3001/api'; 
+  }
+  
+  return 'http://localhost:3011/api'; // Docker default
+};
+
+const API_BASE_URL = getBaseUrl();
 
 export const apiClient = axios.create({
   baseURL: API_BASE_URL,
   timeout: 10000,
 });
+
+console.log(`🔌 API Client initialized using: ${API_BASE_URL}`);
 
 apiClient.interceptors.request.use(
   async (config) => {

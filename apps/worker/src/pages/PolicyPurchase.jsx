@@ -1,4 +1,3 @@
-// apps/worker/src/pages/PolicyPurchase.jsx
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { apiClient } from '../services/api';
@@ -51,18 +50,18 @@ export default function PolicyPurchase({ profile, onLogout }) {
       async (position) => {
         const { latitude, longitude } = position.coords;
         setCurrentCoords({ latitude, longitude });
-        
+
         try {
           const res = await apiClient.get('/zones/resolve', {
             params: { lat: latitude, lon: longitude }
           });
           const resolved = res.data.data;
           setResolvedLocation(resolved);
-          
+
           if (resolved.zone_id) {
             setSelectedZone(resolved.zone_id);
           }
-          
+
           // Re-fetch zones for the resolved city
           await fetchZones(resolved.city_name || resolved.nearest_city_name);
         } catch (err) {
@@ -107,7 +106,7 @@ export default function PolicyPurchase({ profile, onLogout }) {
       setLoading(true);
       setError('');
       const coverageStart = toLocalISODate(new Date());
-      
+
       const res = await apiClient.post('/premiums/calculate', {
         zone_id: selectedZone,
         week_start: coverageStart,
@@ -235,16 +234,13 @@ export default function PolicyPurchase({ profile, onLogout }) {
               <button
                 key={z.zone_id}
                 onClick={() => setSelectedZone(z.zone_id)}
-                className={`p-3 rounded-lg border-2 transition-colors text-left ${
-                  selectedZone === z.zone_id
-                    ? 'border-teal-600 bg-teal-50'
-                    : 'border-gray-200 bg-white hover:border-gray-300'
-                }`}
+                className={`p-3 rounded-lg border-2 transition-colors text-left ${selectedZone === z.zone_id
+                  ? 'border-teal-600 bg-teal-50'
+                  : 'border-gray-200 bg-white hover:border-gray-300'
+                  }`}
               >
                 <p className="font-semibold text-sm text-gray-900">
-                  {resolvedLocation?.mode === 'FALLBACK' 
-                    ? (resolvedLocation.city || resolvedLocation.nearest_city_name) 
-                    : z.name}
+                  {z.name}
                 </p>
                 <p className="text-xs text-gray-500">Risk: {z.zone_risk_score.toFixed(2)}</p>
               </button>
@@ -271,9 +267,9 @@ export default function PolicyPurchase({ profile, onLogout }) {
             </div>
 
             {/* Coverage Tier */}
-            <div className={`bg-gradient-to-r ${tierInfo[premium.recommended_tier]?.color} rounded-lg p-6 text-white`}>
+            <div className="bg-gradient-to-r from-purple-500 to-purple-600 rounded-lg p-6 text-white">
               <p className="text-sm font-medium opacity-90 mb-2">Recommended Coverage</p>
-              <p className="text-4xl font-bold">₹{premium.premium_rupees}</p>
+              <p className="text-4xl font-bold">₹{premium.tiers?.[premium.recommended_tier]?.premium || premium.premium_rupees}</p>
               <p className="text-sm opacity-90 mt-2">{premium.recommended_tier}</p>
             </div>
 
@@ -284,11 +280,10 @@ export default function PolicyPurchase({ profile, onLogout }) {
                   key={tier}
                   type="button"
                   onClick={() => setSelectedTier(tier)}
-                  className={`w-full text-left border-2 rounded-lg p-4 transition-colors ${
-                    selectedTier === tier
-                      ? 'border-teal-600 bg-teal-50'
-                      : 'border-gray-200 bg-white hover:border-gray-300'
-                  }`}
+                  className={`w-full text-left border-2 rounded-lg p-4 transition-colors ${selectedTier === tier
+                    ? 'border-teal-600 bg-teal-50'
+                    : 'border-gray-200 bg-white hover:border-gray-300'
+                    }`}
                 >
                   <div className="flex items-start justify-between">
                     <div>
@@ -312,14 +307,16 @@ export default function PolicyPurchase({ profile, onLogout }) {
 
             {/* Breakdown */}
             <div className="bg-gray-100 rounded-lg p-4">
-              <p className="text-sm font-semibold text-gray-700 mb-3">Premium Breakdown</p>
+              <p className="text-sm font-semibold text-gray-700 mb-3">Premium Breakdown ({selectedTier})</p>
               <div className="space-y-2 text-sm">
-                {premium.breakdown && Object.entries(premium.breakdown).map(([key, value]) => (
-                  <div key={key} className="flex justify-between text-gray-700">
-                    <span>{key.replace(/_/g, ' ')}:</span>
-                    <span className="font-medium">{value}</span>
-                  </div>
-                ))}
+                {(premium.tiers?.[selectedTier]?.breakdown || premium.breakdown) && 
+                  Object.entries(premium.tiers?.[selectedTier]?.breakdown || premium.breakdown).map(([key, value]) => (
+                    <div key={key} className="flex justify-between text-gray-700">
+                      <span>{key.replace(/_/g, ' ')}:</span>
+                      <span className="font-medium">{value}</span>
+                    </div>
+                  ))
+                }
               </div>
             </div>
 

@@ -3,6 +3,19 @@ import { useNavigate } from 'react-router-dom';
 import { apiClient } from '../services/api';
 import { setToken } from '../utils/auth';
 
+const CITIES = [
+  { id: 'BLR', name: 'Bengaluru', lat: 12.9716, lon: 77.5946 },
+  { id: 'MUM', name: 'Mumbai', lat: 19.0760, lon: 72.8777 },
+  { id: 'DEL', name: 'Delhi NCR', lat: 28.6139, lon: 77.2090 },
+  { id: 'CHN', name: 'Chennai', lat: 13.0827, lon: 80.2707 },
+  { id: 'HYD', name: 'Hyderabad', lat: 17.3850, lon: 78.4867 },
+  { id: 'PUN', name: 'Pune', lat: 18.5204, lon: 73.8567 },
+  { id: 'KOL', name: 'Kolkata', lat: 22.5726, lon: 88.3639 },
+  { id: 'AMD', name: 'Ahmedabad', lat: 23.0225, lon: 72.5714 },
+  { id: 'JAI', name: 'Jaipur', lat: 26.9124, lon: 75.7873 },
+  { id: 'KOC', name: 'Kochi', lat: 9.9312, lon: 76.2673 },
+];
+
 export default function Register() {
   const navigate = useNavigate();
   const [step, setStep] = useState(1); // 1: Info, 2: Platform/Zone, 3: OTP Verify
@@ -12,6 +25,7 @@ export default function Register() {
     phone: '',
     platform: 'ZOMATO',
     zone_id: '',
+    city_id: '',
   });
   const [isLocating, setIsLocating] = useState(false);
   const [locationStatus, setLocationStatus] = useState('idle'); // idle, detecting, success, error
@@ -37,38 +51,69 @@ export default function Register() {
 
   const PLATFORMS = ['ZOMATO', 'SWIGGY'];
 
-  const handleDetectLocation = () => {
+  const handleCitySelect = (cityId) => {
+    const city = CITIES.find(c => c.id === cityId);
+    if (!city) return;
+
+    setFormData(prev => ({ ...prev, city_id: cityId }));
     setIsLocating(true);
     setLocationStatus('detecting');
     setError('');
     setResolvedLocation(null);
 
+    setCoords({ latitude: city.lat, longitude: city.lon });
+
+    apiClient.get('/zones/resolve', { params: { lat: city.lat, lon: city.lon } })
+      .then(({ data }) => {
+        const resolved = data.data || {};
+        setResolvedLocation(resolved);
+        setFormData(prev => ({ ...prev, zone_id: resolved.zone_id || prev.zone_id }));
+        setLocationName(`${resolved.city_name} • ${resolved.zone_name}`);
+        setLocationStatus('success');
+      })
+      .catch((err) => {
+        console.error('Zone resolve error:', err);
+        setError(err.response?.data?.error || 'Unable to setup zone for this city.');
+        setLocationStatus('error');
+      })
+      .finally(() => {
+        setIsLocating(false);
+      });
+  };
+
+  const detectLocation = () => {
     if (!navigator.geolocation) {
-      setError('Geolocation is not supported by your browser');
-      setLocationStatus('error');
-      setIsLocating(false);
+      setError('Geolocation is not supported by your browser.');
       return;
     }
+
+    setIsLocating(true);
+    setLocationStatus('detecting');
+    setError('');
+    setResolvedLocation(null);
+    setFormData(prev => ({ ...prev, city_id: '' }));
 
     navigator.geolocation.getCurrentPosition(
       (position) => {
         const { latitude, longitude } = position.coords;
         setCoords({ latitude, longitude });
+
         apiClient.get('/zones/resolve', { params: { lat: latitude, lon: longitude } })
           .then(({ data }) => {
             const resolved = data.data || {};
             setResolvedLocation(resolved);
             setFormData(prev => ({ ...prev, zone_id: resolved.zone_id || prev.zone_id }));
-            setLocationName(
-              resolved.mode === 'SUPPORTED_CITY'
-                ? `${resolved.city_name} • ${resolved.zone_name}`
-                : `${resolved.nearest_city_name || resolved.city || 'Fallback region'} • Fallback`
-            );
+
+            if (resolved.mode === 'FALLBACK') {
+              setLocationName(`${resolved.district || resolved.city} (Mapped to ${resolved.nearest_city_name})`);
+            } else {
+              setLocationName(`${resolved.city_name} • ${resolved.zone_name}`);
+            }
             setLocationStatus('success');
           })
           .catch((err) => {
-            console.error('Location resolve error:', err);
-            setError(err.response?.data?.error || 'Unable to resolve your location. Please try again.');
+            console.error('Zone resolve error:', err);
+            setError(err.response?.data?.error || 'Unable to resolve your location.');
             setLocationStatus('error');
           })
           .finally(() => {
@@ -77,11 +122,11 @@ export default function Register() {
       },
       (err) => {
         console.error('Geolocation error:', err);
-        setError('Location access denied. Please enable location permissions to continue.');
+        setError('Location detection failed. Please enable GPS or select a city manually.');
         setLocationStatus('error');
         setIsLocating(false);
       },
-      { timeout: 10000 }
+      { timeout: 10000, enableHighAccuracy: true }
     );
   };
 
@@ -99,7 +144,7 @@ export default function Register() {
     setError('');
 
     if (locationStatus !== 'success' || !formData.zone_id) {
-      setError('Live location is required to proceed. Please click Detect.');
+      setError('Please select an operating city to proceed.');
       return;
     }
 
@@ -230,9 +275,8 @@ export default function Register() {
                 type="button"
                 onClick={handleResendOtp}
                 disabled={loading || resendTimer > 0}
-                className={`w-full text-center font-semibold transition-colors ${
-                  resendTimer > 0 ? 'text-gray-400 cursor-not-allowed' : 'text-indigo-600 hover:text-indigo-700'
-                }`}
+                className={`w-full text-center font-semibold transition-colors ${resendTimer > 0 ? 'text-gray-400 cursor-not-allowed' : 'text-indigo-600 hover:text-indigo-700'
+                  }`}
               >
                 {resendTimer > 0 ? `Resend OTP in ${resendTimer}s` : 'Resend OTP'}
               </button>
@@ -307,47 +351,57 @@ export default function Register() {
               </div>
               <div>
                 <label className="block text-sm font-semibold text-gray-700 mb-2">Live Location Status</label>
-                <div className="p-4 bg-indigo-50 rounded-xl border border-indigo-100 flex items-center justify-between">
+                
+                <div className="w-full p-4 bg-indigo-50 rounded-xl flex items-center justify-between mb-4 border border-indigo-100">
                   <div className="flex items-center gap-3">
-                    <div className={`p-2 rounded-lg ${
-                      locationStatus === 'success' ? 'bg-green-100 text-green-600' : 
-                      locationStatus === 'error' ? 'bg-amber-100 text-amber-600' : 'bg-white text-indigo-600'
-                    }`}>
-                      <span className="text-xl">
-                        {locationStatus === 'success' ? '✅' : 
-                         locationStatus === 'error' ? '⚠️' : 
-                         locationStatus === 'detecting' ? '⏳' : '📍'}
-                      </span>
+                    <div className="bg-white p-2.5 rounded-xl shadow-sm text-xl flex-shrink-0 flex items-center justify-center">
+                      📍
                     </div>
                     <div>
-                      <p className="text-sm font-bold text-gray-900">
-                        {locationStatus === 'success' ? 'Location Verified' : 
-                         locationStatus === 'error' ? 'Location Required' : 
-                         locationStatus === 'detecting' ? 'Locating...' : 'Verify Operating Area'}
-                      </p>
-                      <p className="text-xs text-gray-500">
-                        {locationStatus === 'success' && coords ? (locationName || `Lat: ${coords.latitude.toFixed(5)}, Lng: ${coords.longitude.toFixed(5)}`) :
-                         locationStatus === 'error' ? 'Please allow GPS access' :
-                         'Use GPS for precise city and zone detection'}
-                      </p>
-                      {resolvedLocation && locationStatus === 'success' && (
-                        <p className="text-[11px] text-indigo-500 font-semibold mt-1">
-                          {resolvedLocation.mode === 'SUPPORTED_CITY'
-                            ? `Supported city mode • Premium est. ₹${resolvedLocation.premium_estimate}`
-                            : `Fallback mode • Nearest city: ${resolvedLocation.nearest_city_name} • Premium est. ₹${resolvedLocation.premium_estimate}`}
-                        </p>
-                      )}
+                      <p className="text-sm font-bold text-gray-900 leading-tight">Verify Operating Area</p>
+                      <p className="text-xs text-gray-500 mt-1 leading-tight">Use GPS for precise city and zone detection</p>
                     </div>
                   </div>
                   <button
                     type="button"
-                    onClick={handleDetectLocation}
+                    onClick={detectLocation}
                     disabled={isLocating}
-                    className="px-4 py-2 bg-white border border-indigo-200 rounded-lg text-sm font-bold text-indigo-600 hover:bg-indigo-50 transition-colors shadow-sm disabled:opacity-50"
+                    className="ml-2 px-5 py-2 bg-white text-indigo-700 font-bold text-sm rounded-lg shadow-sm border border-gray-200 hover:bg-gray-50 transition-colors flex-shrink-0"
                   >
-                    {locationStatus === 'success' ? 'Update' : 'Detect'}
+                    {isLocating ? '...' : 'Detect'}
                   </button>
                 </div>
+
+                <div className="flex items-center gap-4 mb-4">
+                  <div className="h-px bg-gray-200 flex-1"></div>
+                  <span className="text-xs font-bold text-gray-400 uppercase tracking-widest">OR</span>
+                  <div className="h-px bg-gray-200 flex-1"></div>
+                </div>
+
+                <select
+                  value={formData.city_id || ''}
+                  onChange={(e) => handleCitySelect(e.target.value)}
+                  className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none transition-all"
+                >
+                  <option value="" disabled>Select city </option>
+                  {CITIES.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                </select>
+
+                {locationStatus === 'detecting' && (
+                  <p className="text-sm text-indigo-600 mt-2 flex items-center gap-2">
+                    <span className="animate-spin text-lg">⏳</span> Setting up zone...
+                  </p>
+                )}
+
+                {locationStatus === 'success' && resolvedLocation && (
+                  <div className="mt-4 p-4 bg-indigo-50 rounded-xl border border-indigo-100 flex items-center gap-3">
+                    <div className="p-2 bg-green-100 text-green-600 rounded-lg text-xl">✅</div>
+                    <div>
+                      <p className="text-sm font-bold text-gray-900">Zone Configured: {locationName}</p>
+                      <p className="text-xs text-indigo-600 mt-1 font-medium">Weekly Premium est. ₹{resolvedLocation.premium_estimate || (resolvedLocation.mode === 'FALLBACK' ? 120 : 162)}</p>
+                    </div>
+                  </div>
+                )}
               </div>
             </>
           )}
