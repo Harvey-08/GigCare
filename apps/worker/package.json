@@ -1,7 +1,7 @@
 {
   "name": "gigcare-worker-app",
   "version": "1.0.0",
-  "description": "Worker insurance app for GigCare Phase 2",
+  "description": "Worker insurance app for GigCare",
   "scripts": {
     "start": "react-scripts start",
     "build": "react-scripts build",
