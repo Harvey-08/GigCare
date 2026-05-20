@@ -15,12 +15,13 @@ function StatCard({ label, value, note, accent }) {
 
 function Donut({ claimsByStatus }) {
   const entries = Object.entries(claimsByStatus || {});
-  const total = entries.reduce((sum, [, count]) => sum + count, 0) || 1;
+  const totalClaims = entries.reduce((sum, [, count]) => sum + count, 0);
+  const safeTotal = totalClaims || 1;
   const palette = ['#2563EB', '#1A7F4B', '#E8960C', '#B91C1C', '#64748B'];
   let cursor = 0;
 
   const segments = entries.map(([status, count], index) => {
-    const percentage = (count / total) * 100;
+    const percentage = (count / safeTotal) * 100;
     const start = cursor;
     cursor += percentage;
     return `${palette[index % palette.length]} ${start}% ${cursor}%`;
@@ -28,10 +29,10 @@ function Donut({ claimsByStatus }) {
 
   return (
     <div className="flex flex-col items-center rounded-[28px] border border-slate-200 bg-white p-6 shadow-sm">
-      <div className="h-40 w-40 rounded-full" style={{ background: `conic-gradient(${segments.join(', ')})` }} />
+      <div className="h-40 w-40 rounded-full" style={{ background: entries.length > 0 ? `conic-gradient(${segments.join(', ')})` : '#F1F5F9' }} />
       <div className="mt-4 text-center">
         <p className="text-xs font-black uppercase tracking-[0.3em] text-slate-400">Claims by Status</p>
-        <p className="text-2xl font-black text-slate-900">{total} total</p>
+        <p className="text-2xl font-black text-slate-900">{totalClaims} total</p>
       </div>
     </div>
   );
@@ -137,31 +138,42 @@ export default function Dashboard({ profile, onLogout }) {
 
   return (
     <div className="min-h-screen bg-[#F1F5F9] text-slate-900">
-      <nav className="sticky top-0 z-20 border-b border-slate-800 bg-slate-950 text-white shadow-lg">
+      <nav className="border-b border-slate-200 bg-white text-slate-900 shadow-sm">
         <div className="mx-auto flex max-w-7xl items-center justify-between px-6 py-4">
-          <div className="flex items-center gap-4">
-            <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-white/10 text-2xl">🛡️</div>
+          {/* Left brand side */}
+          <div className="flex items-center gap-3.5">
+            <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-indigo-50 text-lg shadow-sm border border-indigo-100/50">🛡️</div>
             <div>
-              <h1 className="text-lg font-black tracking-tight">GigCare Admin</h1>
-              <p className="text-[10px] font-bold uppercase tracking-[0.35em] text-slate-400">Multi-city control room</p>
+              <h1 className="text-xl font-black tracking-tight text-slate-900 leading-none">GigCare Admin</h1>
+              <p className="text-sm font-medium text-slate-500 mt-1.5">Control Room</p>
             </div>
           </div>
-          <div className="flex items-center gap-4">
+
+          {/* Right actions side */}
+          <div className="flex items-center gap-3">
             <button
               onClick={() => navigate('/trigger')}
-              className="rounded-xl border border-indigo-500/40 bg-indigo-600/20 px-4 py-2 text-xs font-black uppercase tracking-[0.25em] text-indigo-200 transition-all hover:bg-indigo-600/40"
+              className="h-9 rounded-xl border border-indigo-150 bg-indigo-50/60 px-4 text-xs font-black uppercase tracking-[0.2em] text-indigo-700 transition-all hover:bg-indigo-600 hover:text-white hover:border-indigo-600 shadow-sm flex items-center justify-center hover:scale-[1.02] active:scale-[0.98]"
             >
               Trigger Panel
             </button>
-            <div className="hidden text-right sm:block">
-              <p className="text-sm font-bold">{profile?.full_name}</p>
-              <p className="text-[10px] font-bold uppercase tracking-[0.3em] text-indigo-300">System Administrator</p>
+
+            {/* Premium Admin Avatar Pill */}
+            <div className="hidden sm:flex items-center gap-3 bg-slate-50 border border-slate-100 rounded-xl px-3 h-9 shadow-inner">
+              <div className="flex h-6 w-6 items-center justify-center rounded-md bg-indigo-600 text-[10px] font-black text-white">
+                {(profile?.full_name || 'A')[0].toUpperCase()}
+              </div>
+              <div className="text-left">
+                <p className="text-xs font-black text-slate-800 leading-none">{profile?.full_name || 'System Admin'}</p>
+                <p className="text-[8px] font-black uppercase tracking-[0.1em] text-indigo-600 mt-0.5">Admin</p>
+              </div>
             </div>
+
             <button
               onClick={onLogout}
-              className="rounded-xl border border-slate-700 bg-slate-900 px-4 py-2 text-xs font-black uppercase tracking-[0.25em] transition-all hover:border-rose-500 hover:bg-rose-600"
+              className="h-9 rounded-xl border border-slate-200 bg-slate-900 text-white px-4 text-xs font-black uppercase tracking-[0.2em] transition-all hover:bg-rose-600 hover:border-rose-600 shadow-sm flex items-center justify-center hover:scale-[1.02] active:scale-[0.98]"
             >
-              Secure Logout
+              Logout
             </button>
           </div>
         </div>
@@ -207,7 +219,9 @@ export default function Dashboard({ profile, onLogout }) {
                         </div>
                         <div className="text-right">
                           <p className="text-[10px] font-black uppercase tracking-[0.3em] text-slate-400">Loss ratio</p>
-                          <p className="text-2xl font-black text-slate-900">{selectedCity?.loss_ratio?.toFixed?.(2) || '0.00'}</p>
+                          <p className="text-2xl font-black text-slate-900">
+                            {selectedCity?.loss_ratio !== undefined ? `${Math.round(selectedCity.loss_ratio * 100)}%` : '0%'}
+                          </p>
                         </div>
                       </div>
                     </div>
@@ -239,7 +253,7 @@ export default function Dashboard({ profile, onLogout }) {
                                 </td>
                                 <td className="px-5 py-4 text-slate-600">{city.premium_range}</td>
                                 <td className="px-5 py-4 text-slate-600">{city.this_week_claims} / {city.total_claims}</td>
-                                <td className="px-5 py-4 text-right font-black">{city.loss_ratio.toFixed(2)}</td>
+                                <td className="px-5 py-4 text-right font-black">{Math.round(city.loss_ratio * 100)}%</td>
                               </tr>
                             ))}
                           </tbody>

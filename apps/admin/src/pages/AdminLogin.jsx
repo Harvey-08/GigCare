@@ -1,4 +1,3 @@
-// apps/admin/src/pages/AdminLogin.jsx
 import React, { useState } from 'react';
 import { apiClient } from '../services/api';
 import { setAdminToken } from '../utils/auth';

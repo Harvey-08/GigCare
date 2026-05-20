@@ -1,4 +1,3 @@
-// apps/admin/src/utils/auth.js
 const TOKEN_KEY = 'gigcare_admin_token';
 
 export function setAdminToken(token) {
