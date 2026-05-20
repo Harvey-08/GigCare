@@ -1,5 +1,4 @@
-// services/api/routes/webhooks.js
-// Webhook endpoints for Razorpay - Person A
+// Webhook endpoints for Razorpay 
 
 const express = require('express');
 const crypto = require('crypto');
@@ -8,10 +7,8 @@ const db = require('../models/db');
 
 const router = express.Router();
 
-// =====================================================
 // POST /api/webhooks/razorpay-payment
 // Simulate Razorpay payment callback (for demo)
-// =====================================================
 router.post('/razorpay-payment', async (req, res) => {
   try {
     const { policy_id, payment_id } = req.body;
@@ -45,10 +42,8 @@ router.post('/razorpay-payment', async (req, res) => {
   }
 });
 
-// =====================================================
 // POST /api/webhooks/razorpay
 // Razorpay payment/payout webhooks (production)
-// =====================================================
 router.post('/razorpay', async (req, res) => {
   try {
     const event = req.body;

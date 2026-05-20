@@ -1,4 +1,3 @@
-// services/api/routes/policies.js
 const express = require('express');
 const db = require('../models/db');
 const { authMiddleware } = require('../middleware/auth');
@@ -31,9 +30,7 @@ function getTierPricing(basePremium, coverageTier) {
   };
 }
 
-// =====================================
 // POST /api/policies
-// =====================================
 router.post('/', authMiddleware('worker'), async (req, res) => {
   try {
     const { user_id } = req.user;
@@ -163,9 +160,7 @@ router.post('/', authMiddleware('worker'), async (req, res) => {
   }
 });
 
-// =====================================
 // POST /api/policies/:policy_id/activate
-// =====================================
 router.post('/:policy_id/activate', authMiddleware('worker'), async (req, res) => {
   try {
     const { policy_id } = req.params;
@@ -223,9 +218,7 @@ router.post('/:policy_id/activate', authMiddleware('worker'), async (req, res) =
   }
 });
 
-// =====================================
 // GET /api/policies/worker/:user_id
-// =====================================
 router.get('/worker/:user_id', authMiddleware('worker'), async (req, res) => {
   try {
     const { user_id: currentUserId } = req.user;

@@ -1,4 +1,3 @@
-// services/api/routes/admin.js
 const express = require('express');
 const axios = require('axios');
 const { v4: uuidv4 } = require('uuid');
@@ -165,14 +164,12 @@ async function fetchCityWeatherAqiWeek(cityConfig) {
   });
 }
 
-// =====================================================
 // POST /api/admin/login
 // Fixed credential-based login for admin
-// =====================================================
 router.post('/login', async (req, res) => {
   try {
     const { email, password } = req.body;
-    
+
     // Fixed credentials from env
     const expectedEmail = process.env.ADMIN_EMAIL || 'gigcare@admin.com';
     const expectedPassword = process.env.ADMIN_PASSWORD || 'Admin123@';
@@ -180,13 +177,13 @@ router.post('/login', async (req, res) => {
     if (email === expectedEmail && password === expectedPassword) {
       // Create a dummy profile object for the token
       const profile = { id: 'admin-fixed-id', email, role: 'admin', full_name: 'System Admin' };
-      
+
       const token = jwt.sign(
         { user_id: profile.id, email: profile.email, role: profile.role },
         process.env.JWT_SECRET || 'fallback-super-secret-key',
         { expiresIn: '12h' }
       );
-      
+
       return res.json({ data: { token, profile } });
     }
 
@@ -197,10 +194,8 @@ router.post('/login', async (req, res) => {
   }
 });
 
-// =====================================================
 // POST /api/admin/trigger-event
 // Admin fires a trigger event manually (for demo)
-// =====================================================
 router.post('/trigger-event', authMiddleware('admin'), async (req, res) => {
   try {
     const { zone_id, city_id, trigger_type, trigger_value, reason } = req.body;
@@ -256,11 +251,11 @@ router.post('/trigger-event', authMiddleware('admin'), async (req, res) => {
             : normalizedTriggerType === 'APP_OUTAGE'
               ? 1.2
               : 1.0;
-    
+
     const { data: event, error: eventError } = await db.createTriggerEvent(
-      targetZoneId, 
+      targetZoneId,
       normalizedTriggerType,
-      trigger_value, 
+      trigger_value,
       severity
     );
 
@@ -302,10 +297,8 @@ router.post('/trigger-event', authMiddleware('admin'), async (req, res) => {
   }
 });
 
-// =====================================================
 // POST /api/admin/trigger-demo-payout
 // Guarantees trigger targeting an active policy zone for end-to-end demos
-// =====================================================
 router.post('/trigger-demo-payout', authMiddleware('admin'), async (req, res) => {
   try {
     const nowIsoDate = new Date().toISOString().split('T')[0];
@@ -314,7 +307,7 @@ router.post('/trigger-demo-payout', authMiddleware('admin'), async (req, res) =>
 
     const { data: activePolicies, error: activePoliciesError } = await supabase
       .from('policies')
-      .select('*, profiles!inner(id, full_name, zone_id)')
+      .select('*, profiles!policies_user_id_fkey!inner(id, full_name, zone_id)')
       .eq('status', 'ACTIVE')
       .lte('week_start', nowIsoDate)
       .gte('week_end', nowIsoDate)
@@ -396,10 +389,8 @@ router.post('/trigger-demo-payout', authMiddleware('admin'), async (req, res) =>
   }
 });
 
-// =====================================================
 // GET /api/admin/dashboard
 // Get dashboard metrics using Supabase RPC or simple aggregates
-// =====================================================
 router.get('/dashboard', authMiddleware('admin'), async (req, res) => {
   try {
     // 1. Total Premiums
@@ -434,7 +425,7 @@ router.get('/dashboard', authMiddleware('admin'), async (req, res) => {
       .filter((claim) => liabilityStatuses.has(claim.status))
       .reduce((sum, claim) => sum + Number(claim.final_payout || 0), 0);
 
-    const totalPayouts = Math.min(totalClaimLiability, totalPremiums);
+    const totalPayouts = totalClaimLiability;
     const reservePool = Math.max(0, totalPremiums - totalPayouts);
     const lossRatioPercent = totalPremiums > 0 ? Math.round((totalPayouts / totalPremiums) * 100) : 0;
 
@@ -448,7 +439,7 @@ router.get('/dashboard', authMiddleware('admin'), async (req, res) => {
     // 4. Recent Claims
     const { data: recentClaims } = await supabase
       .from('claims')
-      .select('*, profiles(full_name)')
+      .select('*, profiles!claims_user_id_fkey(full_name)')
       .order('created_at', { ascending: false })
       .limit(10);
 
@@ -485,10 +476,8 @@ router.get('/dashboard', authMiddleware('admin'), async (req, res) => {
   }
 });
 
-// =====================================================
 // POST /api/admin/seed-demo-worker
 // Seed one active worker + policy for end-to-end demos
-// =====================================================
 router.post('/seed-demo-worker', authMiddleware('admin'), async (req, res) => {
   let stage = 'init';
   try {
@@ -585,10 +574,8 @@ router.post('/seed-demo-worker', authMiddleware('admin'), async (req, res) => {
   }
 });
 
-// =====================================================
 // GET /api/admin/fraud-rings
 // Fraud ring feed proxied from the fraud service
-// =====================================================
 router.get('/fraud-rings', authMiddleware('admin'), async (req, res) => {
   try {
     const response = await axios.get(`${FRAUD_SERVICE_URL}/rings`, { timeout: 5000 });
@@ -605,10 +592,8 @@ router.get('/fraud-rings', authMiddleware('admin'), async (req, res) => {
   }
 });
 
-// =====================================================
 // GET /api/admin/eligibility-stats
 // SS Code eligibility overview
-// =====================================================
 router.get('/eligibility-stats', authMiddleware('admin'), async (req, res) => {
   try {
     let stats = { eligible: 0, near_threshold: 0, ineligible: 0, total: 0 };
@@ -682,23 +667,21 @@ router.get('/eligibility-stats', authMiddleware('admin'), async (req, res) => {
   }
 });
 
-// =====================================================
 // GET /api/admin/cities/metrics
 // All-city comparison data for the India map dashboard
-// =====================================================
 router.get('/cities/metrics', authMiddleware('admin'), async (req, res) => {
   try {
     const [zonesResult, claimsResult] = await Promise.allSettled([
       supabase.from('zones').select('zone_id, zone_risk_score, zone_risk_level, city, name, lat, lon'),
-      supabase.from('claims').select('zone_id, status, final_payout, created_at'),
+      supabase.from('claims').select('city_id, user_id, status, final_payout, created_at'),
     ]);
 
     const zones = zonesResult.status === 'fulfilled' && !zonesResult.value.error ? (zonesResult.value.data || []) : [];
-    const claims = zonesResult.status === 'fulfilled' ? dedupeClaims(
-      claimsResult.status === 'fulfilled' && !claimsResult.value.error ? (claimsResult.value.data || []) : [],
+    const claims = claimsResult.status === 'fulfilled' && !claimsResult.value.error ? dedupeClaims(
+      claimsResult.value.data || [],
       claimStore.listFallbackClaims().map((claim) => ({
         ...claim,
-        zone_id: claim.zone_id || null,
+        city_id: claim.city_id || null,
       }))
     ) : [];
 
@@ -706,14 +689,6 @@ router.get('/cities/metrics', authMiddleware('admin'), async (req, res) => {
       const cityName = zone.city || 'Unknown';
       acc[cityName] = acc[cityName] || [];
       acc[cityName].push(zone);
-      return acc;
-    }, {});
-
-    const claimGroups = claims.reduce((acc, claim) => {
-      const matchingZone = zones.find((zone) => zone.zone_id === claim.zone_id);
-      const cityName = matchingZone?.city || 'Unknown';
-      acc[cityName] = acc[cityName] || [];
-      acc[cityName].push(claim);
       return acc;
     }, {});
 
@@ -732,12 +707,16 @@ router.get('/cities/metrics', authMiddleware('admin'), async (req, res) => {
     const cityMetrics = CITY_CONFIGS.map((city) => {
       const cityZones = zoneGroups[city.city_name] || [];
       const cityZoneIds = cityZones.map(z => z.zone_id);
-      
-      const cityClaims = (claims || []).filter(c => cityZoneIds.includes(c.zone_id));
+
+      const cityClaims = (claims || []).filter(c => {
+        if (c.city_id === city.city_id) return true;
+        if (c.user_id && cityZoneIds.includes(profileMap[c.user_id])) return true;
+        return false;
+      });
       const recentClaims = cityClaims.filter((claim) => new Date(claim.created_at) >= new Date(Date.now() - 7 * 24 * 60 * 60 * 1000));
-      
+
       const cityWorkerCount = (profiles || []).filter(p => cityZoneIds.includes(p.zone_id)).length;
-      
+
       // Real policies aggregation
       const cityActivePolicies = (activePolicies || []).filter(p => cityZoneIds.includes(profileMap[p.user_id]));
       const totalPremiums = cityActivePolicies.reduce((sum, p) => sum + (p.premium_paid || 0), 0);
@@ -747,7 +726,7 @@ router.get('/cities/metrics', authMiddleware('admin'), async (req, res) => {
       const minPremium = premiumValues.length ? Math.min(...premiumValues) : null;
       const maxPremium = premiumValues.length ? Math.max(...premiumValues) : null;
       const totalClaimLiability = cityClaims.reduce((sum, claim) => sum + Number(claim.final_payout || 0), 0);
-      const totalPayouts = Math.min(totalClaimLiability, totalPremiums);
+      const totalPayouts = totalClaimLiability;
       const reservePool = Math.max(0, totalPremiums - totalPayouts);
       const lossRatio = totalPremiums > 0 ? Number((totalPayouts / totalPremiums).toFixed(2)) : 0;
 
@@ -786,10 +765,8 @@ router.get('/cities/metrics', authMiddleware('admin'), async (req, res) => {
   }
 });
 
-// =====================================================
 // GET /api/admin/forecast
 // Lightweight next-week claims forecast
-// =====================================================
 router.get('/forecast', authMiddleware('admin'), async (req, res) => {
   try {
     const { data: claims, error } = await supabase
@@ -829,10 +806,8 @@ router.get('/forecast', authMiddleware('admin'), async (req, res) => {
   }
 });
 
-// =====================================================
 // GET /api/admin/weather-aqi-week?city_id=BLR
 // 7-day city weather + AQI outlook for admin dashboard
-// =====================================================
 router.get('/weather-aqi-week', authMiddleware('admin'), async (req, res) => {
   try {
     const cityId = String(req.query.city_id || 'BLR').toUpperCase();
@@ -852,6 +827,30 @@ router.get('/weather-aqi-week', authMiddleware('admin'), async (req, res) => {
   } catch (err) {
     console.error('Weather AQI week error:', err.message);
     res.status(500).json({ error: 'Failed to fetch weather AQI week', code: 'WEATHER_AQI_WEEK_FAILED' });
+  }
+});
+
+// GET /api/admin/claims/:id
+// Get full claim details for the timeline view
+router.get('/claims/:id', authMiddleware('admin'), async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    const { data: claim, error } = await supabase
+      .from('claims')
+      .select('*, profiles!claims_user_id_fkey(*)')
+      .eq('claim_id', id)
+      .maybeSingle();
+
+    if (error) throw error;
+    if (!claim) {
+      return res.status(404).json({ error: 'Claim not found', code: 'CLAIM_NOT_FOUND' });
+    }
+
+    res.json({ data: claim });
+  } catch (err) {
+    console.error('Claim detail error:', err);
+    res.status(500).json({ error: 'Failed to fetch claim details', code: 'CLAIM_DETAIL_FAILED' });
   }
 });
 

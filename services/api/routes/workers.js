@@ -42,8 +42,13 @@ async function queryMonthlyClaims(userId, monthStartIso) {
       .eq(filter.column, filter.value)
       .gte('created_at', monthStartIso);
 
+    if (!result.error && result.data && result.data.length > 0) {
+      return result.data;
+    }
+
+    // No error but empty results — try next filter column.
     if (!result.error) {
-      return result.data || [];
+      continue;
     }
 
     // Missing column/table fallback.
@@ -131,7 +136,7 @@ router.get('/:id/income-recovery', authMiddleware('worker'), async (req, res) =>
       .filter((claim) => new Date(claim.created_at || 0) >= monthStart);
     const combinedMonthlyClaims = dedupeClaimsById([...allMonthlyClaims, ...fallbackMonthlyClaims]);
 
-    const paidClaims = combinedMonthlyClaims.filter((claim) => claim.status === 'PAID');
+    const paidClaims = combinedMonthlyClaims.filter((claim) => claim.status === 'PAID' || claim.status === 'APPROVED');
     const liabilityStatuses = new Set(['AUTO_CREATED', 'TRUST_EVALUATED', 'APPROVED', 'PARTIAL', 'FLAGGED', 'PAID']);
     const claimedClaims = combinedMonthlyClaims.filter((claim) => liabilityStatuses.has(claim.status));
 

@@ -131,7 +131,7 @@ async function callFraudService(payload) {
     const controller = new AbortController();
     timeout = setTimeout(() => controller.abort(), 5000);
 
-    // Enhance with NLP if enabled (Phase 3)
+    // Enhance with NLP if enabled
     const enrichedPayload = {
       ...payload,
       enable_nlp_enhancement: process.env.ENABLE_NLP_FRAUD_ENHANCEMENT !== 'false',
@@ -615,11 +615,11 @@ router.post('/auto-create', internalServiceAuth, async (req, res) => {
         .join(' | ');
 
       const claimPayload = {
-        policy_id: policy.policy_id,
+        policy_id: policy.policy_id || policy.id,
         user_id: userId,
         trigger_event_id: event_id,
-        zone_id: policy.profiles?.zone_id || zone_id || null,
-        city_id: city_id || null,
+        zone_id: policy.profiles?.zone_id || policy.zone_id || zone_id || 'CHN_CENTROID',
+        city_id: city_id || 'CHN',
         trigger_type,
         trigger_value,
         disruption_start: req.body.disruption_start || new Date(Date.now() - hours * 60 * 60 * 1000).toISOString(),

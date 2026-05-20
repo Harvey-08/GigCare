@@ -1,4 +1,3 @@
-// services/api/routes/auth.js
 const express = require('express');
 const nodemailer = require('nodemailer');
 const jwt = require('jsonwebtoken');
@@ -13,14 +12,14 @@ const pendingOtps = new Map();
 
 const transportConfig = process.env.SMTP_HOST?.includes('gmail.com')
   ? {
-      service: 'gmail',
-      auth: {
-        user: process.env.SMTP_USER,
-        pass: process.env.SMTP_PASS,
-      },
-    }
+    service: 'gmail',
+    auth: {
+      user: process.env.SMTP_USER,
+      pass: process.env.SMTP_PASS,
+    },
+  }
   : process.env.SMTP_HOST
-  ? {
+    ? {
       host: process.env.SMTP_HOST,
       port: Number(process.env.SMTP_PORT) || 587,
       secure: process.env.SMTP_SECURE === 'true',
@@ -29,7 +28,7 @@ const transportConfig = process.env.SMTP_HOST?.includes('gmail.com')
         pass: process.env.SMTP_PASS,
       },
     }
-  : null;
+    : null;
 
 const transporter = transportConfig ? nodemailer.createTransport(transportConfig) : null;
 
@@ -45,15 +44,15 @@ const sendOtpEmail = async (email, code) => {
   };
 
   if (!transporter) {
-    console.log(`📩 OTP for ${email}: ${code} (SMTP not configured)`);
+    console.log(`OTP for ${email}: ${code} (SMTP not configured)`);
     return;
   }
 
   try {
     const result = await transporter.sendMail(message);
-    console.log(`📧 OTP email sent successfully to ${email} (Message ID: ${result.messageId})`);
+    console.log(`OTP email sent successfully to ${email} (Message ID: ${result.messageId})`);
   } catch (error) {
-    console.error(`❌ Failed to send OTP email to ${email}:`, error.message);
+    console.error(`Failed to send OTP email to ${email}:`, error.message);
     throw error; // Re-throw to be caught by the calling function
   }
 };
@@ -214,10 +213,8 @@ router.post('/verify-otp', async (req, res) => {
   }
 });
 
-// =====================================================
 // GET /api/auth/me
 // Get current user profile (Worker or Admin)
-// =====================================================
 router.get('/me', authMiddleware(), async (req, res) => {
   try {
     const profile = req.user.profile;
@@ -242,10 +239,8 @@ router.get('/me', authMiddleware(), async (req, res) => {
   }
 });
 
-// =====================================================
 // POST /api/auth/complete-profile
 // Update worker profile with platform and zone after login
-// =====================================================
 router.post('/complete-profile', authMiddleware('worker'), async (req, res) => {
   try {
     const { user_id } = req.user;

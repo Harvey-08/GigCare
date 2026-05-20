@@ -1,6 +1,3 @@
-// services/api/routes/zones.js
-// Zone endpoints - Person A
-
 const express = require('express');
 const db = require('../models/db');
 const supabase = require('../models/supabase');
@@ -32,6 +29,7 @@ async function ensureSupportedCityZone(gridCell, cityConfig) {
       zone_id: gridCell.zone_id,
       name: `${cityConfig.city_name} Grid ${gridCell.row}-${gridCell.col}`,
       city: cityConfig.city_name,
+      city_id: cityConfig.city_id,
       lat: gridCell.centroid_lat,
       lon: gridCell.centroid_lon,
       zone_risk_score: 1.0,
@@ -70,6 +68,7 @@ async function ensureFallbackCityZone(cityConfig) {
       zone_id: fallbackZoneId,
       name: cityConfig.city_name,
       city: cityConfig.city_name,
+      city_id: cityConfig.city_id,
       lat: cityConfig.centroid_lat,
       lon: cityConfig.centroid_lon,
       zone_risk_score: 1.0,
@@ -294,7 +293,7 @@ router.get('/:zone_id/risk', async (req, res) => {
     if (!zone) {
       return res.status(404).json({ error: 'Zone not found', code: 'ZONE_NOT_FOUND' });
     }
-    
+
     res.json({
       data: {
         zone_id: zone.zone_id,

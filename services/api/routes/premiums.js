@@ -1,4 +1,3 @@
-// services/api/routes/premiums.js
 const express = require('express');
 const axios = require('axios');
 const db = require('../models/db');
@@ -6,15 +5,13 @@ const { authMiddleware } = require('../middleware/auth');
 const supabase = require('../models/supabase');
 const { resolveUserLocation } = require('../utils/location-resolver');
 const { computeZoneRiskScore } = require('../utils/risk-scorer');
-const { applySeasonalGuard, checkEnrollmentLock, getBasePremiumForCity } = require('../utils/premium-calculator');
+const { applySeasonalGuard, checkEnrollmentLock, getBasePremiumForCity, getSeasonalMultiplier } = require('../utils/premium-calculator');
 
 const router = express.Router();
 
 const ML_PREMIUM_URL = process.env.ML_PREMIUM_SERVICE_URL || 'http://localhost:5001';
 
-// =====================================================
 // POST /api/premiums/calculate
-// =====================================================
 router.post('/calculate', authMiddleware('worker'), async (req, res) => {
   try {
     const { user_id } = req.user;
@@ -102,19 +99,50 @@ router.post('/calculate', authMiddleware('worker'), async (req, res) => {
         zone_name: zone.name,
         city_id: cityId,
         resolved_location: resolvedLocation,
-        recommended_tier: premium < 120 ? 'SEED' : premium < 180 ? 'STANDARD' : 'PREMIUM',
+        recommended_tier: premium < 110 ? 'SEED' : premium < 250 ? 'STANDARD' : 'PREMIUM',
+        breakdown: {
+          Base_City_Rate: `₹${getBasePremiumForCity(cityId)}`,
+          Zone_Risk_Factor: `${zoneRiskScore.toFixed(2)}x`,
+          Seasonal_Multiplier: `${getSeasonalMultiplier(new Date().getMonth() + 1, cityId).toFixed(2)}x`,
+          GST_Tax: '18% (Included)',
+          Net_Premium: `₹${premium}`
+        },
         tiers: {
           SEED: {
             premium: Math.round(premium * 0.65),
-            max_payout: 600
+            max_payout: 600,
+            breakdown: {
+              Base_City_Rate: `₹${Math.round(getBasePremiumForCity(cityId) * 0.65)}`,
+              Zone_Risk_Factor: `${zoneRiskScore.toFixed(2)}x`,
+              Seasonal_Multiplier: `${getSeasonalMultiplier(new Date().getMonth() + 1, cityId).toFixed(2)}x`,
+              Tier_Multiplier: '0.65x',
+              GST_Tax: '18% (Included)',
+              Net_Premium: `₹${Math.round(premium * 0.65)}`
+            }
           },
           STANDARD: {
             premium: Math.round(premium),
-            max_payout: 1200
+            max_payout: 1200,
+            breakdown: {
+              Base_City_Rate: `₹${getBasePremiumForCity(cityId)}`,
+              Zone_Risk_Factor: `${zoneRiskScore.toFixed(2)}x`,
+              Seasonal_Multiplier: `${getSeasonalMultiplier(new Date().getMonth() + 1, cityId).toFixed(2)}x`,
+              Tier_Multiplier: '1.00x',
+              GST_Tax: '18% (Included)',
+              Net_Premium: `₹${Math.round(premium)}`
+            }
           },
           PREMIUM: {
             premium: Math.round(premium * 1.35),
-            max_payout: 1800
+            max_payout: 1800,
+            breakdown: {
+              Base_City_Rate: `₹${Math.round(getBasePremiumForCity(cityId) * 1.35)}`,
+              Zone_Risk_Factor: `${zoneRiskScore.toFixed(2)}x`,
+              Seasonal_Multiplier: `${getSeasonalMultiplier(new Date().getMonth() + 1, cityId).toFixed(2)}x`,
+              Tier_Multiplier: '1.35x',
+              GST_Tax: '18% (Included)',
+              Net_Premium: `₹${Math.round(premium * 1.35)}`
+            }
           }
         }
       },
